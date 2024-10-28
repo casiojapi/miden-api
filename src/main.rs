@@ -6,7 +6,9 @@ fn main() {
 //    test_miden();
 //    exist_directory("/miden/noexiste".to_string());
 //    init_user("joel".to_string());
-    create_wallet("joel".to_string())
+//    create_wallet("joel".to_string())
+//    get_default_accont("joel".to_string());
+    get_balance("joel".to_string());
 }
 
 fn test_miden() {
@@ -30,16 +32,40 @@ fn exist_directory(usr_id: String) -> bool {
 
 fn init_user(usr: String){
     let path = format!("/tmp/{}",usr);
-    let output = Command::new("bash").arg("-c").arg(format!("mkdir {} ; cd {} ;  miden init --rpc 18.203.155.106",path,path))
+    let output = Command::new("bash").arg("-c").arg(format!("mkdir {} && cd {} &&  miden init --rpc 18.203.155.106",path,path))
         .output().expect("No se uqe hace esto");
     println!("Inicializo miden")
 }
 
 fn create_wallet(usr: String){
     let path = format!("/tmp/{}",usr);
-    let output = Command::new("bash").arg("-c").arg(format!("cd {} ;  miden new-wallet -m",path))
+    let output = Command::new("bash").arg("-c").arg(format!("cd {} &&  miden new-wallet -m",path))
         .output().expect("No se uqe hace esto");
+
     println!("status: {}", output.status);
     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
     println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
 }
+
+
+fn get_default_accont(usr: String) -> String {
+    //TODO: The deafult account is part of the toml. write a fuction to parse it an get the value
+    return "0x911e736ae706e46f".to_string()
+}
+
+
+fn get_balance(usr: String) -> Option<String>{
+    let address ="0x911e736ae706e46f".to_string();
+    let path = format!("/tmp/{}",usr);
+    let output = Command::new("bash").arg("-c").arg(format!("cd {} ;  miden account --show {}",path,address))
+        .output().expect("No se uqe hace esto");
+    let result = String::from_utf8_lossy(&output.stdout).into_owned();
+    let it: String = result.lines().filter(|line| line.contains("0xa0e61d8a3f8b50be")).collect();
+    println!("{:?}",it);
+
+    let value  = it.as_str().replace(" ","").replace("│","");
+    let number:Option<String> = value.split("┆").collect::<Vec<&str>>().pop().map(|x| x.to_string());
+    println!("{:?}",number);
+    return number;
+}
+ 
