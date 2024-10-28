@@ -5,10 +5,11 @@ fn main() {
     pwd();
 //    test_miden();
 //    exist_directory("/miden/noexiste".to_string());
-//    init_user("joel".to_string());
-//    create_wallet("joel".to_string())
-//    get_default_accont("joel".to_string());
-    get_balance("joel".to_string());
+    init_user("joel".to_string());
+    create_wallet("joel".to_string());
+    let a = get_default_account("joel".to_string());
+    println!("Account: {a}");
+//    get_balance("joel".to_string());
 }
 
 fn test_miden() {
@@ -48,9 +49,10 @@ fn create_wallet(usr: String){
 }
 
 
-fn get_default_accont(usr: String) -> String {
-    //TODO: The deafult account is part of the toml. write a fuction to parse it an get the value
-    return "0x911e736ae706e46f".to_string()
+fn get_default_account(usr: String) -> String {
+    let file_string = std::fs::read_to_string(format!("/tmp/{}/miden-client.toml", usr)).unwrap();
+    let parsed_toml = file_string.parse::<toml::Table>().unwrap();
+    parsed_toml["default_account_id"].to_string()
 }
 
 
@@ -68,4 +70,5 @@ fn get_balance(usr: String) -> Option<String>{
     println!("{:?}",number);
     return number;
 }
- 
+
+
