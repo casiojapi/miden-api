@@ -1,16 +1,38 @@
 use std::process::Command; 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const DB_PATH: &str = "./db";
+mod wrapper;
+mod errors;
+mod helpers;
 
 fn main() {
-    pwd();
+    let client = wrapper::CliWrapper::new("test_id".into());
+    client.init_user();
+    // client.sync();
+    // client.create_account();
+    // client.import_note(vec![
+    //     PathBuf::from("/home/odysseus/Others/miden/miden-client/0xa1eb48688924fac439263d9a459621185232dac3c3c6ea04441f5c40796d8098.mno")
+    // ]);
+    client.consume_notes("0x9297feb1c3a6fae7".into(), vec!["0xa1eb48688924fac439263d9a459621185232dac3c3c6ea04441f5c40796d8098".into()]);
+
+
+    // pwd();
 //    test_miden();
 //    exist_directory("/miden/noexiste".to_string());
-//    init_user("fran".to_string());
-//    create_wallet("fran".to_string());
-//    get_default_account("fran".to_string());
-    get_balance("fran".to_string());
+    init_user("joel".to_string());
+    create_account("joel".to_string());
+    let a = get_default_account("joel".to_string());
+    println!("Account: {a}");
+//    get_balance("joel".to_string());
+}
+
+fn test_miden() {
+    let output = Command::new("bash").arg("-c").arg("cd ~/miden/miden-client/ ; miden account -l")
+        .output().expect("No se uqe hace esto");
+    println!("status: {}", output.status);
+    println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+    println!("stderr: {}", String::from_utf8_lossy(&output.stderr));
 }
 
 fn pwd() {
@@ -35,8 +57,7 @@ fn init_user(usr: String){
     }
 }
 
-fn create_wallet(usr: String){
-    //TODO: If get_defaul_value == Error, then create wallet. Maybe force it to default.
+fn create_account(usr: String){
     let path = format!("{}/{}",DB_PATH,usr);
     let output = Command::new("bash").arg("-c").arg(format!("cd {} &&  miden new-wallet -m",path))
         .output().expect("No se uqe hace esto");
