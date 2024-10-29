@@ -72,3 +72,25 @@ fn get_balance(usr: String) -> Option<String>{
 }
 
 
+//fn transfer(sender: String, target: String, amount: String) {
+//    create_note()
+//    export_note()
+//    send_note_to_target()
+//    import_note()
+//    consume_note()
+//}
+
+fn create_note(sender: String, target: String, amount: String) -> String {
+    let path = format!("/tmp/{}",sender);
+    let faucet = "0xa0e61d8a3f8b50be".to_string();
+    let output = Command::new("bash").arg("-c").arg(format!("cd {} ;  miden send -s {} -t {} -a {}::{} --force",path,sender,target,faucet,amount))
+        .output().expect("No se uqe hace esto");
+    //TODO: hacer que devuelva el id de la nota
+    //TODO: Exportar nota
+    return "Id_note".to_string()
+}
+
+fn export_note(){
+
+}
+
