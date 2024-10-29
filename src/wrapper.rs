@@ -6,6 +6,8 @@ use crate::stdpr;
 pub(crate) const MIDEN_CLIENT_CLI_VAR: &'static str = "MIDEN_CLIENT_CLI";
 pub(crate) const USERS_DB_DIR_VAR: &'static str = "USERS_DB_DIR";
 
+pub const FAUCET:&str = "0xa0e61d8a3f8b50be";
+
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -37,6 +39,9 @@ impl CliWrapper {
         format!("{}/store.sqlite3", self.get_user_path())
     }
 
+    fn get_user_config_path(&self) -> String {
+         format!("{}/{}",self.get_user_path(),"miden-client.toml")
+    }
     fn is_user_initialized(&self) -> bool {
         Path::new(&self.get_user_db_path()).exists()
     }
@@ -73,6 +78,11 @@ impl CliWrapper {
         format!("{} && {} {}", self._cd(), self.bin, cmd)
     }
 
+    pub fn _miden_create_note(&self,target:String, amount:String) -> String {
+        let cmd =format!("send -t {} -a {}::{}  --note-type private --force",target,amount,FAUCET);
+        format!("{} && {} {}", self._cd(), self.bin, cmd)
+    }
+
     fn sync(&self) -> WResult<()> {
         Command::new("bash")
             .arg("-c")
@@ -94,20 +104,42 @@ impl CliWrapper {
         Ok(())
     }
 
-    pub fn create_account(&self) -> WResult<()> {
-        Command::new("bash")
+    pub fn create_account(&self) -> WResult<String> {
+        let output = Command::new("bash")
             .arg("-c")
             .arg(self._miden_new_wallet_mut())
             .output()
             .map_err(|_| Error::CreateAccount)?;
-        Ok(())
+
+        let result = String::from_utf8_lossy(&output.stdout).into_owned();
+        let it: String = result.lines().filter(|line| line.contains("To view account details execute")).collect();
+        let value  = it.as_str().replace("`","");
+        let address:Option<String> = value.split(" ").collect::<Vec<&str>>().pop().map(|x| x.to_string());
+        address.ok_or(Error::ParseError)
+    }
+
+    fn get_default_account(&self) -> Option<String> {
+        //TODO armar el get_usr_config
+        let file_string = std::fs::read_to_string(self.get_user_config_path()).unwrap();
+        let parsed_toml = file_string.parse::<toml::Table>().unwrap();
+        let address = parsed_toml["default_account_id"].as_str().map(|x| x.to_string());
+        println!("{:?}",address);
+        return address;
     }
 
     pub fn list_accounts(&self) {}
 
-    pub fn create_note(&self) {
-        // create_note
-        // sync
+    pub fn create_note(&self, target:String, amount:String) -> Option<String> {
+    let output = Command::new("bash")
+            .arg("-c")
+            .arg(self._miden_create_note(target,amount))
+            .output()
+            .map_err(|_| Error::CreateAccount);
+    let result = String::from_utf8_lossy(&output.unwrap().stdout).into_owned();
+    println!("{:?}",result);
+    let note_id:Option<String> = result.split("Output notes:").collect::<Vec<&str>>().pop().map(|x| x.to_string())
+        .map(|x| x.replace(" ","").replace("-",""));
+    return note_id
     }
 
     pub fn export_note(&self) {}
@@ -143,14 +175,15 @@ mod test {
 
     #[test]
     fn test() {
-        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
+        env::set_var(USERS_DB_DIR_VAR, "/home/alba/miden/wraper-cli/tests/db");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let client_fran = CliWrapper::new("fran".into());
         let client_joel = CliWrapper::new("joel".into());
-
-        assert_eq!(client_fran.get_user_db_path(), "/tmp/users_test/fran/store.sqlite3");
+        let target = client_joel.get_default_account();
+        let id_note = client_fran.create_note(target.unwrap(),"1".to_string()).unwrap();
+        assert_eq!(id_note, "asd")
+//
+//
         // do stuff
     }
-
-
 }

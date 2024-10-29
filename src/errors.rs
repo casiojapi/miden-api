@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Error {
     CreateUserDir,
     MidenInit,
@@ -6,4 +7,6 @@ pub enum Error {
     ImportNote,
     PathNotFound,
     SyncError,
+    ParseError,
+    CreateNote
 }

@@ -1,29 +1,29 @@
 use std::process::Command; 
 use std::path::{Path, PathBuf};
 
-const DB_PATH: &str = "./db";
+const DB_PATH: &str = "../tests/db";
 mod wrapper;
 mod errors;
 mod helpers;
 
 fn main() {
-    let client = wrapper::CliWrapper::new("test_id".into());
-    client.init_user();
+    init_user("test".to_string());
+    create_account("test".to_string());
+//    let client = wrapper::CliWrapper::new("test_id".into());
+//    client.init_user();
     // client.sync();
     // client.create_account();
     // client.import_note(vec![
     //     PathBuf::from("/home/odysseus/Others/miden/miden-client/0xa1eb48688924fac439263d9a459621185232dac3c3c6ea04441f5c40796d8098.mno")
     // ]);
-    client.consume_notes("0x9297feb1c3a6fae7".into(), vec!["0xa1eb48688924fac439263d9a459621185232dac3c3c6ea04441f5c40796d8098".into()]);
+//    client.consume_notes("0x9297feb1c3a6fae7".into(), vec!["0xa1eb48688924fac439263d9a459621185232dac3c3c6ea04441f5c40796d8098".into()]);
 
-
-    // pwd();
 //    test_miden();
 //    exist_directory("/miden/noexiste".to_string());
-    init_user("joel".to_string());
-    create_account("joel".to_string());
-    let a = get_default_account("joel".to_string());
-    println!("Account: {a}");
+//    init_user("joel".to_string());
+//    create_account("joel".to_string());
+//    let a = get_default_account("joel".to_string());
+//    println!("Account: {a}");
 //    get_balance("joel".to_string());
 }
 
