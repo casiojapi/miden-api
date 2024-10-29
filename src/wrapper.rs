@@ -83,6 +83,23 @@ impl CliWrapper {
         format!("{} && {} {}", self._cd(), self.bin, cmd)
     }
 
+    fn faucet_request(&self, amount: usize) -> String {
+        let account_id = "0x9b7d69ffed23456a"; // TODO: get default account from self.user_id
+        let body = format!("{{ \"account_id\": \"{}\", \"is_private_note\": true, \"asset_amount\": {} }}", account_id, amount);
+        let response = reqwest::blocking::Client::new()
+            .post("https://testnet.miden.io/get_tokens")
+            .header("Content-Type", "application/json")
+            .body(body)
+            .send()
+            .unwrap();
+
+        let note_id = response.headers().get("note-id").unwrap().to_str().map(|x| x.to_string()).unwrap();
+        let note = response.bytes().unwrap();
+        std::fs::write(format!("{}.mno", note_id), note);
+
+        note_id
+    }
+
     fn sync(&self) -> WResult<()> {
         Command::new("bash")
             .arg("-c")
@@ -181,9 +198,11 @@ mod test {
         let client_joel = CliWrapper::new("joel".into());
         let target = client_joel.get_default_account();
         let id_note = client_fran.create_note(target.unwrap(),"1".to_string()).unwrap();
-        assert_eq!(id_note, "asd")
+        assert_eq!(id_note, "asd");
 //
 //
         // do stuff
+
+        client_fran.faucet_request(100);
     }
 }

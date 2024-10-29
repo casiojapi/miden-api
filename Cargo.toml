@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 toml = "*"
+reqwest = { version = "*", features = ["blocking"] }
 
 [features]
 default = ["debug"]
