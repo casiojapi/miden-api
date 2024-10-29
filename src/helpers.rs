@@ -8,3 +8,10 @@ macro_rules! stdpr {
         println!("stderr {:?}", String::from_utf8_lossy(&_o.stderr));
     };
 }
+
+
+#[macro_export]
+macro_rules! plain_enum {
+    ( $x:expr ) => {
+    };
+}
