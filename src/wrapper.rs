@@ -3,6 +3,9 @@ use crate::errors::Error;
 #[cfg(debug)]
 use crate::stdpr;
 
+pub(crate) const MIDEN_CLIENT_CLI_VAR: &'static str = "MIDEN_CLIENT_CLI";
+pub(crate) const USERS_DB_DIR_VAR: &'static str = "USERS_DB_DIR";
+
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -18,12 +21,12 @@ pub struct CliWrapper {
 
 impl CliWrapper {
     pub fn new(user_id: String) -> Self {
-        let bin = env::var("MIDEN_CLIENT_CLI").unwrap_or("/bin/miden".into());
+        let bin = env::var(MIDEN_CLIENT_CLI_VAR).unwrap_or("/bin/miden".into());
         Self { bin, user_id }
     }
 
     fn users_db_dir() -> String {
-        env::var("USERS_DB_DIR").unwrap_or("/tmp/users".into())
+        env::var(USERS_DB_DIR_VAR).unwrap_or("/tmp/users".into())
     }
 
     fn get_user_path(&self) -> String {
@@ -132,4 +135,22 @@ impl CliWrapper {
             .map_err(|_| Error::ImportNote)?;
         Ok(())
     }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test() {
+        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
+        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
+        let client_fran = CliWrapper::new("fran".into());
+        let client_joel = CliWrapper::new("joel".into());
+
+        assert_eq!(client_fran.get_user_db_path(), "/tmp/users_test/fran/store.sqlite3");
+        // do stuff
+    }
+
+
 }
