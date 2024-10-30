@@ -56,7 +56,12 @@ pub enum NoteStatus {
 pub type WResult<T> = Result<T, CliError>;
 
 pub struct CliWrapper {
-    bin: String, user_id: String, username: String, } impl CliWrapper {
+    bin: String,
+    user_id: String,
+    username: String,
+}
+
+impl CliWrapper {
     pub fn new(user_id: String, username: String) -> Self {
         let bin = env::var(MIDEN_CLIENT_CLI_VAR).unwrap_or("/bin/miden".into());
         println!("bin: {:?}", bin);
@@ -87,9 +92,8 @@ pub struct CliWrapper {
     }
 
     pub fn get_account_balance(&self) -> WResult<String> {
-        let account_id = self
-            .get_default_account_or_err()?; 
-    
+        let account_id = self.get_default_account_or_err()?;
+
         let output = Command::new("bash")
             .arg("-c")
             .arg(self._miden_show_account(account_id))
@@ -98,7 +102,7 @@ pub struct CliWrapper {
                 println!("Command execution error: {:?}", e);
                 CliError::AccountBalance
             })?;
-    
+
         let stdout = String::from_utf8_lossy(&output.stdout);
         let lines = stdout.lines().filter(|line| line.contains(FAUCET)).last();
         let binding = lines.unwrap_or("│ f ┆ f ┆ 0 │");
@@ -106,8 +110,8 @@ pub struct CliWrapper {
             .split("┆")
             .last()
             .unwrap()
-            .replace(" ","")
-            .replace("│","");
+            .replace(" ", "")
+            .replace("│", "");
         Ok(balance.to_string())
     }
 
@@ -173,8 +177,13 @@ pub struct CliWrapper {
         format!("{} && {} account -l", self._cd(), self.bin)
     }
 
-    fn _miden_show_account(&self,account_id:String) -> String {
-        format!("{} && {} account --show {}", self._cd(), self.bin, account_id)
+    fn _miden_show_account(&self, account_id: String) -> String {
+        format!(
+            "{} && {} account --show {}",
+            self._cd(),
+            self.bin,
+            account_id
+        )
     }
 
     fn _miden_notes(&self) -> String {
@@ -347,9 +356,12 @@ pub struct CliWrapper {
 
         let filter = r"0x9[a-fA-F0-9]{15}";
         let regex = Regex::new(filter).unwrap();
-        let account_ids: Vec<&str> = regex.find_iter(&result).filter_map(|x| Some(x.as_str())).collect();
+        let account_ids: Vec<&str> = regex
+            .find_iter(&result)
+            .filter_map(|x| Some(x.as_str()))
+            .collect();
         let account_ids: Vec<String> = account_ids.iter().map(|x| x.to_string()).collect();
-        println!("{:?}",account_ids);
+        println!("{:?}", account_ids);
         Ok(account_ids)
     }
 
@@ -464,9 +476,7 @@ pub struct CliWrapper {
         println!("Notestatus {:?} {}", note_status, height);
         match note_status {
             NoteStatus::Consumed => Ok(()),
-            NoteStatus::Committed => {
-                self.consume_all_notes(account)
-            },
+            NoteStatus::Committed => self.consume_all_notes(account),
             NoteStatus::Expected => {
                 self.poll_status_until_change(&status, "block", height - status.block)
                     .await?;
@@ -493,7 +503,7 @@ mod test {
 
     use super::*;
 
-//    #[test]
+    //    #[test]
     fn test_init() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames_test");
@@ -504,7 +514,7 @@ mod test {
         assert!(Path::new(&client_fran.get_username_map_path()).exists());
     }
 
-//    #[test]
+    //    #[test]
     fn test_from_username() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames_test");
@@ -540,35 +550,35 @@ mod test {
     }
 
     // #[test]
-//    fn test_create_note() {
-//        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-//        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-//        let client_fran = CliWrapper::new("fran_id".into(), "fran".into());
-//        // client_fran.init_user();
-//        // client_fran.create_account();
-//
-//        let status = client_fran.sync().unwrap();
-//        println!("initial {:?}", status);
-//
-//        let (note_id, _) = client_fran.faucet_request(100).unwrap();
-//        println!("{}", note_id);
-//
-//        // client_fran.import_note(vec![note_path]);
-//        // client_fran.consume_all_notes(client_fran.get_default_account().unwrap());
-//        let o = tokio::runtime::Builder::new_multi_thread()
-//            .enable_all()
-//            .build()
-//            .unwrap()
-//            .block_on(async {
-//                client_fran.consume_and_sync(note_id).await;
-//
-//                // client_fran
-//                //     // .poll_status_until_change(status, "notes_consumed", 1)
-//                //     .poll_status_until_change(status, "block", 10)
-//                //     .await;
-//            });
-//        // println!("{}", o);
-//    }
+    //    fn test_create_note() {
+    //        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
+    //        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
+    //        let client_fran = CliWrapper::new("fran_id".into(), "fran".into());
+    //        // client_fran.init_user();
+    //        // client_fran.create_account();
+    //
+    //        let status = client_fran.sync().unwrap();
+    //        println!("initial {:?}", status);
+    //
+    //        let (note_id, _) = client_fran.faucet_request(100).unwrap();
+    //        println!("{}", note_id);
+    //
+    //        // client_fran.import_note(vec![note_path]);
+    //        // client_fran.consume_all_notes(client_fran.get_default_account().unwrap());
+    //        let o = tokio::runtime::Builder::new_multi_thread()
+    //            .enable_all()
+    //            .build()
+    //            .unwrap()
+    //            .block_on(async {
+    //                client_fran.consume_and_sync(note_id).await;
+    //
+    //                // client_fran
+    //                //     // .poll_status_until_change(status, "notes_consumed", 1)
+    //                //     .poll_status_until_change(status, "block", 10)
+    //                //     .await;
+    //            });
+    //        // println!("{}", o);
+    //    }
 
     // #[test]
     fn test_get_note() {
@@ -581,19 +591,18 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_get_accounts(){
+    async fn test_get_accounts() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let _client_fran = CliWrapper::new("fran_id".into(), "fran".into());
         _client_fran.init_user();
-//        let _ = _client_fran.create_account();
-//
-//        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
-//        _client_fran.consume_and_sync(&note_id).await.unwrap();
+        //        let _ = _client_fran.create_account();
+        //
+        //        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
+        //        _client_fran.consume_and_sync(&note_id).await.unwrap();
         let res = _client_fran.get_list_accounts();
         let balance = _client_fran.get_account_balance().unwrap();
-        assert_eq!(balance,"100")
-
+        assert_eq!(balance, "100")
     }
 }

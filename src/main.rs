@@ -26,7 +26,6 @@ async fn new(username: &str, id: &str) -> Result<String, ApiErrorResponder> {
 
 #[get("/<username>/faucet", rank = 2)]
 async fn faucet_fund(username: &str) -> Result<String, ApiErrorResponder> {
-
     let client = CliWrapper::from_username(username.into())?;
     client.init_user()?;
     let (note_id, _) = client.faucet_request(100).await?;
@@ -49,7 +48,9 @@ async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiE
     let sender = CliWrapper::from_username(username.into())?;
     let receiver = CliWrapper::from_username(to.into())?;
     let receiver_acc = receiver.get_default_account_or_err()?;
-    let note_id = sender.create_note_and_sync(receiver_acc, asset.into()).await?;
+    let note_id = sender
+        .create_note_and_sync(receiver_acc, asset.into())
+        .await?;
     sender.export_note_to_path(&note_id, receiver.get_user_path())?;
     receiver.consume_and_sync(&note_id).await?;
     Ok(note_id)
@@ -58,12 +59,12 @@ async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiE
 fn get_notes() {}
 
 #[get("/<username>/note/receive/<note_id>", rank = 2)]
-fn receive_note(username: &str, note_id: &str) {
-}
+fn receive_note(username: &str, note_id: &str) {}
 
 #[launch]
 fn run() -> _ {
-    rocket::build()
-        .mount("/", routes![ping])
-        .mount("/account", routes![new, send_note, faucet_fund, get_balance])
+    rocket::build().mount("/", routes![ping]).mount(
+        "/account",
+        routes![new, send_note, faucet_fund, get_balance],
+    )
 }
