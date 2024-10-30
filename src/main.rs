@@ -6,7 +6,7 @@ use wrapper::CliWrapper;
 
 mod errors;
 mod helpers;
-mod other;
+// mod other;
 mod wrapper;
 
 #[get("/ping")]
@@ -14,28 +14,56 @@ fn ping() -> &'static str {
     "pong"
 }
 
-#[get("/<id>/new", rank = 2)]
-fn new(id: &str) -> Result<String, ApiErrorResponder> {
-    let client = CliWrapper::new(id.into());
+#[get("/<username>/new/<id>", rank = 2)]
+async fn new(username: &str, id: &str) -> Result<String, ApiErrorResponder> {
+    let client = CliWrapper::new(id.into(), username.into());
     client.init_user()?;
-    client.create_account()?;
-    Ok("".into())
+    let account = client.create_account()?;
+    //let (note_id, _) = client.faucet_request(100).await?;
+    //client.consume_and_sync(&note_id).await?;
+    Ok(account)
 }
 
-#[get("/<id>/note/from/<from>/to/<to>/asset/<asset>", rank = 2)]
-fn send_note(id: &str, from: &str, to: &str, asset: &str) {
-    let client = CliWrapper::new(id.into());
-    let note_id = client.create_note("".into(), "".into());
+#[get("/<username>/faucet", rank = 2)]
+async fn faucet_fund(username: &str) -> Result<String, ApiErrorResponder> {
 
+    let client = CliWrapper::from_username(username.into())?;
+    client.init_user()?;
+    let (note_id, _) = client.faucet_request(100).await?;
+    client.consume_and_sync(&note_id).await?;
+    Ok("funded".to_string())
 }
 
-#[get("/<id>/note/receive/<note_id>", rank = 2)]
-fn receive_note(id: &str, note_id: &str) {
+#[get("/<username>/balance", rank = 2)]
+fn get_balance(username: &str) -> Result<String, ApiErrorResponder> {
+    let client = CliWrapper::from_username(username.into())?;
+    client.init_user()?;
+
+    let balance = client.get_account_balance()?;
+
+    Ok(balance)
+}
+
+#[get("/<username>/note/to/<to>/asset/<asset>", rank = 2)]
+async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiErrorResponder> {
+    let sender = CliWrapper::from_username(username.into())?;
+    let receiver = CliWrapper::from_username(to.into())?;
+    let receiver_acc = receiver.get_default_account_or_err()?;
+    let note_id = sender.create_note_and_sync(receiver_acc, asset.into()).await?;
+    sender.export_note_to_path(&note_id, receiver.get_user_path())?;
+    receiver.consume_and_sync(&note_id).await?;
+    Ok(note_id)
+}
+
+fn get_notes() {}
+
+#[get("/<username>/note/receive/<note_id>", rank = 2)]
+fn receive_note(username: &str, note_id: &str) {
 }
 
 #[launch]
 fn run() -> _ {
     rocket::build()
         .mount("/", routes![ping])
-        .mount("/account", routes![new])
+        .mount("/account", routes![new, send_note, faucet_fund, get_balance])
 }

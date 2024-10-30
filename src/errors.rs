@@ -1,4 +1,4 @@
-use std::fmt::{self};
+use std::{ffi, fmt::{self}, io};
 
 use rocket::http::Status;
 
@@ -12,7 +12,17 @@ pub enum CliError {
     PathNotFound,
     SyncError,
     ParseError,
-    CreateNote
+    CreateNote,
+    ExportNote,
+    NoDefaultAccount,
+    PollTimeoutError,
+    AccountBalance,
+    NoAccounts,
+    ListNotes,
+    BadUsername(ffi::OsString),
+    Regex(regex::Error),
+    ReqwestError(reqwest::Error),
+    IOError(io::Error)
 }
 
 impl fmt::Display for CliError {
@@ -20,6 +30,25 @@ impl fmt::Display for CliError {
         write!(f, "{}", self)
     }
 }
+
+impl From<reqwest::Error> for CliError {
+    fn from(value: reqwest::Error) -> Self {
+        CliError::ReqwestError(value)
+    }
+}
+
+impl From<io::Error> for CliError {
+    fn from(value: io::Error) -> Self {
+        CliError::IOError(value)
+    }
+}
+
+impl From<ffi::OsString> for CliError {
+    fn from(value: ffi::OsString) -> Self {
+        CliError::BadUsername(value)
+    }
+}
+
 
 pub enum ApiError {
     Cli(CliError),
