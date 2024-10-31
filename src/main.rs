@@ -4,10 +4,12 @@ extern crate rocket;
 use errors::ApiErrorResponder;
 use wrapper::CliWrapper;
 
+
 mod errors;
 mod helpers;
 // mod other;
 mod wrapper;
+mod txinfo;
 
 #[get("/ping")]
 fn ping() -> &'static str {

@@ -1,7 +1,20 @@
+//TODO: El crear note quedo medio raro (al final del create note mando la info a la db),
+//de momento estamos usando el note_id como tx_id en la db
+//hay que ver como conseguir el user_id, de momento estamos guardando 2 veces el addres del target
+//
+//Al final de create_wallet estamos corriendo sql_init_table, agrega la tabla a la base de datos
+//
+//Las filas de las db de las transacciones las trae como Vec<TxInfo>. Hay que decidir como
+//serializarlas
+
 use regex::Regex;
 use rocket::tokio::time::sleep;
+use sqlite;
+use sqlite::Connection;
+
 
 use crate::errors::CliError;
+use crate::txinfo::TxInfo;
 
 #[cfg(feature = "debug")]
 use crate::stdpr;
@@ -138,6 +151,38 @@ impl CliWrapper {
 
     fn get_user_db_path(&self) -> String {
         format!("{}/store.sqlite3", self.get_user_path())
+    }
+
+    fn sql_create_connection(&self) -> Connection {
+        let path_db = self.get_user_db_path();
+        let path_db = Path::new(&path_db);
+        let connection = sqlite::open(path_db).unwrap();
+        return connection
+    }
+
+    fn sql_init_table(&self) -> () {
+        let query_create = r#"CREATE TABLE "tx_extension_table" (
+            "tx_id" TEXT,
+            "acc_sender" TEXT,
+            "acc_recipient" TEXT,
+            "acc_recipient_user_id" TEXT,
+            "faucet" TEXT,
+            "value" TEXT,
+            PRIMARY KEY("tx_id")
+            );"# ;
+        let _ = self.sql_create_connection().execute(query_create);
+    }
+
+
+    fn sql_get_transactions(&self) -> Vec<TxInfo> {
+        let mut data =Vec::new();
+        let conection = self.sql_create_connection();
+        let query = "SELECT * FROM tx_extension_table";
+        let _ = conection.iterate(query,|row| {
+            let info =  TxInfo::from_row(row);
+            data.push(info);
+            true});
+        return data
     }
 
     fn get_user_config_path(&self) -> String {
@@ -330,6 +375,7 @@ impl CliWrapper {
             .collect::<Vec<&str>>()
             .pop()
             .map(|x| x.to_string());
+        self.sql_init_table();
         address.ok_or(CliError::ParseError)
     }
 
@@ -368,7 +414,7 @@ impl CliWrapper {
     pub fn create_note(&self, target: String, amount: String) -> WResult<String> {
         let output = Command::new("bash")
             .arg("-c")
-            .arg(self._miden_create_note(target, amount))
+            .arg(self._miden_create_note(target.clone(), amount.clone()))
             .output()
             .map_err(|_| CliError::CreateAccount)?;
         let result = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -379,6 +425,13 @@ impl CliWrapper {
             .map(|x| x.replace(" ", "").replace("-", "").trim().to_string())
             .ok_or(CliError::ParseError)?;
         self.sync()?;
+        let tx: TxInfo = TxInfo::from_values(note_id.clone(),
+            self.get_default_account().unwrap(),
+            target.clone(),
+            target,
+            FAUCET.to_string(),
+            amount);
+        tx.to_database(self.get_user_db_path());
         return Ok(note_id);
     }
 
@@ -602,7 +655,20 @@ mod test {
         //        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
         //        _client_fran.consume_and_sync(&note_id).await.unwrap();
         let res = _client_fran.get_list_accounts();
+
+        let _client_joel = CliWrapper::new("joel_id".into(), "joel".into());
+        _client_joel.init_user();
+        let _ = _client_joel.create_account();
+        let target = _client_joel.get_default_account().unwrap();
+        _client_fran.create_note(target.clone(),"9".to_string());
+
+        _client_fran.create_note(target,"1".to_string());
+
+
         let balance = _client_fran.get_account_balance().unwrap();
-        assert_eq!(balance, "100")
+        let data = _client_fran.sql_get_transactions();
+        let d = format!("{:?}",data);
+        assert_eq!(d,"2 transacciones")
+
     }
 }

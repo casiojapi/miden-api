@@ -9,6 +9,7 @@ toml = "0.8.19"
 rocket = { version = "0.5.1", features = ["json"] }
 log = "0.4"
 regex = "1.11.1"
+sqlite = "*"
 
 [features]
 default = ["debug"]
