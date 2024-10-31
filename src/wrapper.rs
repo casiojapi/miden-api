@@ -13,8 +13,7 @@ use rocket::tokio::time::sleep;
 use sqlite;
 use sqlite::Connection;
 
-
-use crate::errors::CliError;
+use crate::errors::{CmdError, WrapperError};
 use crate::txinfo::TxInfo;
 
 #[cfg(feature = "debug")]
@@ -28,6 +27,7 @@ pub const FAUCET: &str = "0xa0e61d8a3f8b50be";
 
 use std::{
     env,
+    ffi::OsStr,
     fs::{self, DirEntry},
     num::ParseIntError,
     path::{Path, PathBuf},
@@ -67,7 +67,8 @@ pub enum NoteStatus {
     Consumed,
 }
 
-pub type WResult<T> = Result<T, CliError>;
+pub type WResult<T> = Result<T, WrapperError>;
+pub type CmdResult = Result<String, CmdError>;
 
 pub struct CliWrapper {
     bin: String,
@@ -99,7 +100,7 @@ impl CliWrapper {
             }
             break;
         }
-        let user_id_dir = user_id_dir.pop().ok_or(CliError::PathNotFound)?;
+        let user_id_dir = user_id_dir.pop().ok_or(WrapperError::PathNotFound)?;
 
         let user_id: String = user_id_dir.file_name().into_string()?;
 
@@ -112,18 +113,8 @@ impl CliWrapper {
 
     pub fn get_account_balance(&self) -> WResult<String> {
         let account_id = self.get_default_account_or_err()?;
-
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_show_account(account_id))
-            .output()
-            .map_err(|e| {
-                println!("Command execution error: {:?}", e);
-                CliError::AccountBalance
-            })?;
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let lines = stdout.lines().filter(|line| line.contains(FAUCET)).last();
+        let output = self._miden_show_account(account_id)?;
+        let lines = output.lines().filter(|line| line.contains(FAUCET)).last();
         let binding = lines.unwrap_or("│ f ┆ f ┆ 0 │");
         let balance = binding
             .split("┆")
@@ -163,7 +154,7 @@ impl CliWrapper {
         let path_db = self.get_user_db_path();
         let path_db = Path::new(&path_db);
         let connection = sqlite::open(path_db).unwrap();
-        return connection
+        return connection;
     }
 
     fn sql_init_table(&self) -> () {
@@ -175,20 +166,23 @@ impl CliWrapper {
             "faucet" TEXT,
             "value" TEXT,
             PRIMARY KEY("tx_id")
-            );"# ;
+            );"#;
         let _ = self.sql_create_connection().execute(query_create);
-        println!("New tx_extension_table created in {}",self.get_user_db_path())
+        println!(
+            "New tx_extension_table created in {}",
+            self.get_user_db_path()
+        )
     }
 
-
     fn sql_get_transactions(&self) -> String {
-        let mut data =Vec::new();
+        let mut data = Vec::new();
         let conection = self.sql_create_connection();
         let query = "SELECT * FROM tx_extension_table";
-        let _ = conection.iterate(query,|row| {
+        let _ = conection.iterate(query, |row| {
             data.push(TxInfo::from_row(&row).to_json());
-            true});
-        return format!("[{}]",data.join(","))
+            true
+        });
+        return format!("[{}]", data.join(","));
     }
 
     fn get_user_config_path(&self) -> String {
@@ -204,77 +198,113 @@ impl CliWrapper {
     }
 
     fn create_user_dir(&self) -> WResult<()> {
-        fs::create_dir_all(self.get_username_map_path()).map_err(|_| CliError::CreateUserDir)?;
-        fs::create_dir_all(self.get_user_path()).map_err(|_| CliError::CreateUserDir)
+        fs::create_dir_all(self.get_username_map_path())
+            .map_err(|_| WrapperError::CreateUserDir)?;
+        fs::create_dir_all(self.get_user_path()).map_err(|_| WrapperError::CreateUserDir)
     }
 
     fn _cd(&self) -> String {
         format!("cd {}", self.get_user_path())
     }
 
-    fn _miden_init(&self) -> String {
-        format!("{} && {} init --rpc 18.203.155.106", self._cd(), self.bin)
+    fn _command_or_fail(&self, command: &mut Command, err: CmdError) -> CmdResult {
+        let o = command.output()?;
+        if !o.status.success() {
+            error!("{}", String::from_utf8_lossy(&o.stderr));
+            return Err(err);
+        }
+        Ok(String::from_utf8_lossy(&o.stdout).into_owned())
     }
 
-    fn _miden_sync(&self) -> String {
-        format!("{} && {} sync", self._cd(), self.bin)
+    fn _miden_cmd<I, S>(&self, args: I, err: CmdError) -> CmdResult
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let mut cmd = Command::new(&self.bin);
+        let r = cmd.current_dir(self.get_user_path()).args(args);
+        self._command_or_fail(r, err)
     }
 
-    fn _miden_new_wallet_mut(&self) -> String {
-        format!("{} && {} new-wallet -m", self._cd(), self.bin)
+    fn _miden_init(&self) -> CmdResult {
+        self._miden_cmd(["init", "--rpc", "18.203.155.106"], CmdError::MidenInit)
     }
 
-    fn _miden_list_accounts(&self) -> String {
-        format!("{} && {} account -l", self._cd(), self.bin)
+    fn _miden_sync(&self) -> CmdResult {
+        self._miden_cmd(["sync"], CmdError::MidenSyncError)
     }
 
-    fn _miden_show_account(&self, account_id: String) -> String {
-        format!(
-            "{} && {} account --show {}",
-            self._cd(),
-            self.bin,
-            account_id
+    fn _miden_new_wallet_mut(&self) -> CmdResult {
+        self._miden_cmd(["new-wallet", "-m"], CmdError::CreateAccount)
+    }
+
+    fn _miden_list_accounts(&self) -> CmdResult {
+        self._miden_cmd(["account", "-l"], CmdError::ListAccounts)
+    }
+
+    fn _miden_show_account(&self, account_id: String) -> CmdResult {
+        self._miden_cmd(["account", "--show", &account_id], CmdError::ShowAccount)
+    }
+
+    fn _miden_notes(&self) -> CmdResult {
+        self._miden_cmd(["notes"], CmdError::ListNotes)
+    }
+
+    fn _miden_consume_notes(&self, account: String, notes: Vec<String>) -> CmdResult {
+        let note_list_text = notes.join(" ");
+        self._miden_cmd(
+            ["consume-notes", "-a", &account, "-f", &note_list_text],
+            CmdError::ConsumeNotes,
         )
     }
 
-    fn _miden_notes(&self) -> String {
-        format!("{} && {} notes", self._cd(), self.bin)
+    fn _miden_consume_all_notes(&self, account: String) -> CmdResult {
+        self._miden_cmd(
+            ["consume-notes", "-a", &account, "-f"],
+            CmdError::ConsumeNotes,
+        )
     }
 
-    fn _miden_consume_notes(&self, account: String, notes: Vec<String>) -> String {
+    fn _miden_import_notes(&self, notes: Vec<String>) -> CmdResult {
         let note_list_text = notes.join(" ");
-        let cmd = format!("consume-notes -a {} -f {}", account, note_list_text);
-        format!("{} && {} {}", self._cd(), self.bin, cmd)
+        self._miden_cmd(["import", &note_list_text], CmdError::ImportNotes)
     }
 
-    fn _miden_consume_all_notes(&self, account: String) -> String {
-        let cmd = format!("consume-notes -a {} -f", account);
-        format!("{} && {} {}", self._cd(), self.bin, cmd)
+    pub fn _miden_create_note(&self, target: String, amount: String) -> CmdResult {
+        self._miden_cmd(
+            [
+                "send",
+                "-t",
+                &target,
+                "-a",
+                &format!("{}::{}", amount, FAUCET),
+                "--note-type",
+                "private",
+                "--force",
+            ],
+            CmdError::CreateNote,
+        )
     }
 
-    fn _miden_import_notes(&self, notes: Vec<String>) -> String {
-        let note_list_text = notes.join(" ");
-        let cmd = format!("import {}", note_list_text);
-        format!("{} && {} {}", self._cd(), self.bin, cmd)
-    }
-
-    pub fn _miden_create_note(&self, target: String, amount: String) -> String {
-        let cmd = format!(
-            "send -t {} -a {}::{}  --note-type private --force",
-            target, amount, FAUCET
-        );
-        format!("{} && {} {}", self._cd(), self.bin, cmd)
-    }
-
-    pub fn _miden_export_note(&self, note_id: String) -> String {
-        let cmd = format!("export --note -e full -f {}.mno {}", note_id, note_id);
-        format!("{} && {} {}", self._cd(), self.bin, cmd)
+    pub fn _miden_export_note(&self, note_id: String) -> CmdResult {
+        self._miden_cmd(
+            [
+                "export",
+                "--note",
+                "-e",
+                "full",
+                "-f",
+                &format!("{}.mno", note_id),
+                &note_id,
+            ],
+            CmdError::ExportNote,
+        )
     }
 
     pub async fn faucet_request(&self, amount: usize) -> WResult<(String, PathBuf)> {
         let account_id = self
             .get_default_account()
-            .ok_or(CliError::NoDefaultAccount)?;
+            .ok_or(WrapperError::NoDefaultAccount)?;
 
         let body = format!(
             "{{ \"account_id\": \"{}\", \"is_private_note\": true, \"asset_amount\": {} }}",
@@ -291,10 +321,10 @@ impl CliWrapper {
         let note_id = response
             .headers()
             .get("note-id")
-            .ok_or(CliError::ParseError)?
+            .ok_or(WrapperError::ParseError)?
             .to_str()
             .map(|x| x.to_string())
-            .map_err(|_| CliError::ParseError)?;
+            .map_err(|_| WrapperError::ParseError)?;
 
         let note = response.bytes().await?;
 
@@ -305,14 +335,8 @@ impl CliWrapper {
     }
 
     fn sync(&self) -> WResult<SyncStatus> {
-        let o = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_sync())
-            .output()
-            .map_err(|_| CliError::SyncError)?;
-
-        SyncStatus::from_log(&String::from_utf8_lossy(&o.stdout).into_owned())
-            .map_err(|_| CliError::SyncError)
+        let o = self._miden_sync()?;
+        SyncStatus::from_log(&o).map_err(|_| WrapperError::CreateSyncStatus)
     }
 
     async fn poll_status_until_change(
@@ -343,7 +367,7 @@ impl CliWrapper {
                 break;
             }
             if counter > 200 {
-                return Err(CliError::PollTimeoutError);
+                return Err(WrapperError::PollTimeoutError);
             }
             counter += 1;
 
@@ -355,25 +379,15 @@ impl CliWrapper {
     pub fn init_user(&self) -> WResult<()> {
         if !self.is_user_initialized() {
             self.create_user_dir()?;
-            Command::new("bash")
-                .arg("-c")
-                .arg(self._miden_init())
-                .output()
-                .map_err(|_| CliError::MidenInit)?;
+            self._miden_init()?;
         }
-        println!("User initialized in {}",self.get_user_path());
+        println!("User initialized in {}", self.get_user_path());
         Ok(())
     }
 
     pub fn create_account(&self) -> WResult<String> {
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_new_wallet_mut())
-            .output()
-            .map_err(|_| CliError::CreateAccount)?;
-
-        let result = String::from_utf8_lossy(&output.stdout).into_owned();
-        let it: String = result
+        let output = self._miden_new_wallet_mut()?;
+        let it: String = output
             .lines()
             .filter(|line| line.contains("To view account details execute"))
             .collect();
@@ -383,9 +397,13 @@ impl CliWrapper {
             .collect::<Vec<&str>>()
             .pop()
             .map(|x| x.to_string());
-        println!("New accoun {:?} created in {}",address.clone().unwrap(), self.get_user_db_path());
+        println!(
+            "New accoun {:?} created in {}",
+            address.clone().unwrap(),
+            self.get_user_db_path()
+        );
         self.sql_init_table();
-        address.ok_or(CliError::ParseError)
+        address.ok_or(WrapperError::ParseError)
     }
 
     pub fn get_default_account(&self) -> Option<String> {
@@ -394,92 +412,76 @@ impl CliWrapper {
         let address = parsed_toml["default_account_id"]
             .as_str()
             .map(|x| x.to_string());
-//        println!("The default account in {} is {}",self.get_user_db_path(),&address.clone().unwrap());
+        //        println!("The default account in {} is {}",self.get_user_db_path(),&address.clone().unwrap());
         return address;
     }
 
     pub fn get_default_account_or_err(&self) -> WResult<String> {
-        self.get_default_account().ok_or(CliError::NoDefaultAccount)
+        self.get_default_account()
+            .ok_or(WrapperError::NoDefaultAccount)
     }
 
     pub fn get_list_accounts(&self) -> WResult<Vec<String>> {
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_list_accounts())
-            .output()
-            .map_err(|_| CliError::NoAccounts)?;
-        let result = String::from_utf8_lossy(&output.stdout).into_owned();
-
+        let output = self._miden_list_accounts()?;
         let filter = r"0x9[a-fA-F0-9]{15}";
         let regex = Regex::new(filter).unwrap();
         let account_ids: Vec<&str> = regex
-            .find_iter(&result)
+            .find_iter(&output)
             .filter_map(|x| Some(x.as_str()))
             .collect();
         let account_ids: Vec<String> = account_ids.iter().map(|x| x.to_string()).collect();
-        println!("The accounts {:?} have been found in {}", account_ids, self.get_user_db_path());
+        println!(
+            "The accounts {:?} have been found in {}",
+            account_ids,
+            self.get_user_db_path()
+        );
         Ok(account_ids)
     }
 
     pub fn create_note(&self, target: String, amount: String) -> WResult<String> {
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_create_note(target.clone(), amount.clone()))
-            .output()
-            .map_err(|_| CliError::CreateAccount)?;
-
-        let result = String::from_utf8_lossy(&output.stdout).into_owned();
-        let note_id = result
+        let output = self._miden_create_note(target.clone(), amount.clone())?;
+        let note_id = output
             .split("Output notes:")
             .collect::<Vec<&str>>()
             .pop()
             .map(|x| x.replace(" ", "").replace("-", "").trim().to_string())
-            .ok_or(CliError::ParseError)?;
+            .ok_or(WrapperError::ParseError)?;
         self.sync()?;
-        let tx: TxInfo = TxInfo::from_values(note_id.clone(),
+        let tx: TxInfo = TxInfo::from_values(
+            note_id.clone(),
             self.get_default_account().unwrap(),
             target.clone(),
             target,
             FAUCET.to_string(),
-            amount);
+            amount,
+        );
         tx.to_database(self.get_user_db_path());
         return Ok(note_id);
     }
 
     pub fn export_note(&self, note_id: &str) -> WResult<Vec<u8>> {
-        Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_export_note(note_id.to_string()))
-            .output()
-            .map_err(|_| CliError::ExportNote)?;
+        self._miden_export_note(note_id.to_string())?;
         let path = self._note_id_to_path(note_id);
-        let bytes = std::fs::read(path).map_err(|_| CliError::PathNotFound)?;
+        // TODO: use tokio::fs
+        let bytes = std::fs::read(path).map_err(|_| WrapperError::PathNotFound)?;
         Ok(bytes)
     }
 
     pub fn export_note_to_path(&self, note_id: &str, path: String) -> WResult<()> {
         let bytes = self.export_note(note_id)?;
+        // TODO: use tokio::fs
         std::fs::write(format!("{}/{}.mno", path, &note_id), bytes)
-            .map_err(|_| CliError::PathNotFound)?;
+            .map_err(|_| WrapperError::PathNotFound)?;
         Ok(())
     }
 
     pub fn consume_notes(&self, account: String, notes: Vec<String>) -> WResult<()> {
-        Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_consume_notes(account, notes))
-            .output()
-            .map_err(|_| CliError::ConsumeNote)?;
+        self._miden_consume_notes(account, notes)?;
         Ok(())
     }
 
     pub fn consume_all_notes(&self, account: String) -> WResult<()> {
-        let o = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_consume_all_notes(account))
-            .output()
-            .map_err(|_| CliError::ConsumeNote)?;
-        println!("stdout {:?}", &String::from_utf8_lossy(&o.stdout));
+        self._miden_consume_all_notes(account)?;
         Ok(())
     }
 
@@ -488,31 +490,19 @@ impl CliWrapper {
             .into_iter()
             .map(|p| {
                 p.to_str()
-                    .ok_or(CliError::PathNotFound)
+                    .ok_or(WrapperError::PathNotFound)
                     .map(|x| x.to_string())
             })
             .collect::<WResult<Vec<String>>>()?;
-
-        Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_import_notes(note_list_text))
-            .output()
-            .map_err(|_| CliError::ImportNote)?;
+        self._miden_import_notes(note_list_text)?;
         Ok(())
     }
 
     pub fn get_note(&self, note_id: &str) -> WResult<(NoteStatus, usize)> {
         let re = Regex::new(&format!(r"(?m)^ {} (\w+) .+ height (\d+)", note_id))
-            .map_err(|e| CliError::Regex(e))?;
-        let o = Command::new("bash")
-            .arg("-c")
-            .arg(self._miden_notes())
-            .output()
-            .map_err(|_| CliError::ListNotes)?;
-
-        let output = String::from_utf8_lossy(&o.stdout);
-        let capt = re.captures(&output).ok_or(CliError::ParseError)?;
-
+            .map_err(|e| WrapperError::Regex(e))?;
+        let output = self._miden_notes()?;
+        let capt = re.captures(&output).ok_or(WrapperError::ParseError)?;
         let status = match &capt[1] {
             "Expected" => NoteStatus::Expected,
             "Committed" => NoteStatus::Committed,
@@ -523,7 +513,7 @@ impl CliWrapper {
         let height = capt[2]
             .to_string()
             .parse::<usize>()
-            .map_err(|_| CliError::ParseError)?;
+            .map_err(|_| WrapperError::ParseError)?;
 
         Ok((status, height))
     }
@@ -534,7 +524,7 @@ impl CliWrapper {
         let status = self.sync()?;
         let account = self
             .get_default_account()
-            .ok_or(CliError::NoDefaultAccount)?;
+            .ok_or(WrapperError::NoDefaultAccount)?;
         self.import_note(vec![note_path])?;
         let (note_status, height) = self.get_note(&note)?;
         println!("Notestatus {:?} {}", note_status, height);
@@ -671,15 +661,13 @@ mod test {
         _client_joel.init_user();
         let _ = _client_joel.create_account();
         let target = _client_joel.get_default_account().unwrap();
-        _client_fran.create_note(target.clone(),"9".to_string());
+        _client_fran.create_note(target.clone(), "9".to_string());
 
-        _client_fran.create_note(target,"1".to_string());
-
+        _client_fran.create_note(target, "1".to_string());
 
         let balance = _client_fran.get_account_balance().unwrap();
         let data = _client_fran.sql_get_transactions();
-        let d = format!("{:?}",data);
-        assert_eq!(d,"2 transacciones")
-
+        let d = format!("{:?}", data);
+        assert_eq!(d, "2 transacciones")
     }
 }
