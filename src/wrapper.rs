@@ -177,18 +177,18 @@ impl CliWrapper {
             PRIMARY KEY("tx_id")
             );"# ;
         let _ = self.sql_create_connection().execute(query_create);
+        println!("New tx_extension_table created in {}",self.get_user_db_path())
     }
 
 
-    fn sql_get_transactions(&self) -> Vec<TxInfo> {
+    fn sql_get_transactions(&self) -> String {
         let mut data =Vec::new();
         let conection = self.sql_create_connection();
         let query = "SELECT * FROM tx_extension_table";
         let _ = conection.iterate(query,|row| {
-            let info =  TxInfo::from_row(row);
-            data.push(info);
+            data.push(TxInfo::from_row(&row).to_json());
             true});
-        return data
+        return format!("[{}]",data.join(","))
     }
 
     fn get_user_config_path(&self) -> String {
@@ -361,6 +361,7 @@ impl CliWrapper {
                 .output()
                 .map_err(|_| CliError::MidenInit)?;
         }
+        println!("User initialized in {}",self.get_user_path());
         Ok(())
     }
 
@@ -382,6 +383,7 @@ impl CliWrapper {
             .collect::<Vec<&str>>()
             .pop()
             .map(|x| x.to_string());
+        println!("New accoun {:?} created in {}",address.clone().unwrap(), self.get_user_db_path());
         self.sql_init_table();
         address.ok_or(CliError::ParseError)
     }
@@ -392,6 +394,7 @@ impl CliWrapper {
         let address = parsed_toml["default_account_id"]
             .as_str()
             .map(|x| x.to_string());
+//        println!("The default account in {} is {}",self.get_user_db_path(),&address.clone().unwrap());
         return address;
     }
 
@@ -414,7 +417,7 @@ impl CliWrapper {
             .filter_map(|x| Some(x.as_str()))
             .collect();
         let account_ids: Vec<String> = account_ids.iter().map(|x| x.to_string()).collect();
-        println!("{:?}", account_ids);
+        println!("The accounts {:?} have been found in {}", account_ids, self.get_user_db_path());
         Ok(account_ids)
     }
 
@@ -424,6 +427,7 @@ impl CliWrapper {
             .arg(self._miden_create_note(target.clone(), amount.clone()))
             .output()
             .map_err(|_| CliError::CreateAccount)?;
+
         let result = String::from_utf8_lossy(&output.stdout).into_owned();
         let note_id = result
             .split("Output notes:")
@@ -656,11 +660,11 @@ mod test {
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let _client_fran = CliWrapper::new("fran_id".into(), "fran".into());
-        _client_fran.init_user();
-        //        let _ = _client_fran.create_account();
+        let _ = _client_fran.init_user();
+        let _ = _client_fran.create_account();
         //
-        //        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
-        //        _client_fran.consume_and_sync(&note_id).await.unwrap();
+        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
+        _client_fran.consume_and_sync(&note_id).await.unwrap();
         let res = _client_fran.get_list_accounts();
 
         let _client_joel = CliWrapper::new("joel_id".into(), "joel".into());

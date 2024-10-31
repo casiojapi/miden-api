@@ -52,4 +52,15 @@ impl TxInfo {
         let query_insert = format!("{} {:?}",tmp, data);
         let _ = conection.execute(&query_insert);
     }
+
+    pub fn to_json(&self) -> String {
+        return format!(r#"{{"tx_id" : "{}" , "acc_sender" : "{}" , "acc_recipient": "{}" , "acc_recipient_user_id" : "{}" , "faucet" : "{}" , "value" : "{}"}}"#,
+            &self.tx_id,
+            &self.acc_sender,
+            &self.acc_recipient,
+            &self.acc_recipient_user_id,
+            &self.faucet,
+            &self.value);
+    }
+
 }
