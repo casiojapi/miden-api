@@ -8,6 +8,7 @@
 //serializarlas
 
 use regex::Regex;
+use rocket::tokio;
 use rocket::tokio::time::sleep;
 use sqlite;
 use sqlite::Connection;
@@ -85,15 +86,20 @@ impl CliWrapper {
         }
     }
 
-    pub fn from_username(username: String) -> WResult<Self> {
+    pub async fn from_username(username: String) -> WResult<Self> {
         let bin = env::var(MIDEN_CLIENT_CLI_VAR).unwrap_or("/bin/miden".into());
         let dir = format!("{}/{}", Self::username_db_dir(), username);
-        let user_id_dir: DirEntry = (fs::read_dir(dir)?)
-            .filter(|r| r.is_ok())
-            .map(|d| d.unwrap())
-            .collect::<Vec<DirEntry>>()
-            .pop()
-            .unwrap();
+
+        let mut user_id_dir_data = tokio::fs::read_dir(dir).await?;
+        let mut user_id_dir = Vec::new();
+        loop {
+            if let Some(next) = user_id_dir_data.next_entry().await? {
+                user_id_dir.push(next);
+            } else {
+            }
+            break;
+        }
+        let user_id_dir = user_id_dir.pop().ok_or(CliError::PathNotFound)?;
 
         let user_id: String = user_id_dir.file_name().into_string()?;
 
@@ -275,14 +281,12 @@ impl CliWrapper {
             account_id, amount
         );
 
-        println!("body {:?}", body);
         let response = reqwest::Client::new()
             .post("https://testnet.miden.io/get_tokens")
             .header("Content-Type", "application/json")
             .body(body)
             .send()
             .await?;
-        println!("res {:?}", response);
 
         let note_id = response
             .headers()
@@ -295,7 +299,7 @@ impl CliWrapper {
         let note = response.bytes().await?;
 
         let note_path: PathBuf = format!("{}/{}.mno", self.get_user_path(), note_id).into();
-        std::fs::write(&note_path, note)?;
+        tokio::fs::write(&note_path, note).await?;
 
         Ok((note_id, note_path))
     }
@@ -320,7 +324,9 @@ impl CliWrapper {
         let mut counter = 0;
         loop {
             let status = self.sync()?;
-            println!("scanning... {:?}", status);
+            if counter % 4 == 0 {
+                println!("scanning... {:?}", status);
+            }
             let delta = match compare_with {
                 "block" => status.block - curr_status.block,
                 "new_pub_notes" => status.new_pub_notes - curr_status.new_pub_notes,
@@ -333,6 +339,7 @@ impl CliWrapper {
                 _ => panic!("please dont fuck up"),
             };
             if delta >= change_size || counter > 200 {
+                println!("exiting... {:?}", status);
                 break;
             }
             if counter > 200 {
@@ -567,15 +574,15 @@ mod test {
         assert!(Path::new(&client_fran.get_username_map_path()).exists());
     }
 
-    //    #[test]
-    fn test_from_username() {
+    // #[test]
+    async fn test_from_username() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames_test");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let _client_fran = CliWrapper::new("fran_id".into(), "fran".into());
         assert!(_client_fran.init_user().is_ok());
 
-        let client_fran = CliWrapper::from_username("fran".into());
+        let client_fran = CliWrapper::from_username("fran".into()).await;
         assert!(client_fran.is_ok());
         if let Ok(c) = client_fran {
             assert_eq!(c.username, "fran");

@@ -1,4 +1,8 @@
-use std::{ffi, fmt::{self}, io};
+use std::{
+    ffi,
+    fmt::{self, Display},
+    io,
+};
 
 use rocket::http::Status;
 
@@ -22,7 +26,7 @@ pub enum CliError {
     BadUsername(ffi::OsString),
     Regex(regex::Error),
     ReqwestError(reqwest::Error),
-    IOError(io::Error)
+    IOError(io::Error),
 }
 
 impl fmt::Display for CliError {
@@ -49,29 +53,14 @@ impl From<ffi::OsString> for CliError {
     }
 }
 
-
+#[derive(Responder)]
 pub enum ApiError {
-    Cli(CliError),
+    #[response(status = 500, content_type = "json")]
+    Cli(String),
 }
 
 impl From<CliError> for ApiError {
     fn from(v: CliError) -> Self {
-        Self::Cli(v)
-    }
-}
-
-pub type ApiErrorResponder = (Status, String);
-
-impl From<CliError> for ApiErrorResponder {
-    fn from(value: CliError) -> Self {
-        (Status::InternalServerError, value.to_string())
-    }
-}
-
-impl From<ApiError> for ApiErrorResponder {
-    fn from(value: ApiError) -> Self {
-        match value {
-            ApiError::Cli(we) => (Status::InternalServerError, we.to_string()),
-        }
+        Self::Cli(format!("{:?}", v))
     }
 }
