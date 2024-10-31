@@ -15,6 +15,7 @@ RUN --mount=type=secret,id=pat export PAT=$(cat /run/secrets/pat) && \
 RUN cargo install --root /miden-cli miden-cli --features concurrent,testing
 
 FROM debian:bookworm-slim AS runner
+RUN apt update && apt install -y libsqlite3-0
 WORKDIR /app
 COPY --from=app-builder /miden-cli-wraper/target/release/wraper-cli /app/
 COPY --from=app-builder /miden-cli-wraper/target/debug/wraper-cli /app/wraper-cli-debug
