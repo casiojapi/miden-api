@@ -15,9 +15,9 @@ fn ping() -> &'static str {
     "pong"
 }
 
-#[get("/<username>/new/<id>", rank = 2)]
-async fn new(username: &str, id: &str) -> Result<String, ApiError> {
-    let client = CliWrapper::new(id.into(), username.into());
+#[get("/<username>/new", rank = 2)]
+async fn new(username: &str) -> Result<String, ApiError> {
+    let client = CliWrapper::new(username.into());
     client.init_user()?;
     let account = client.create_account()?;
     //let (note_id, _) = client.faucet_request(100).await?;
@@ -42,6 +42,14 @@ async fn get_balance(username: &str) -> Result<String, ApiError> {
     Ok(balance)
 }
 
+#[get("/<username>/tx", rank = 2)]
+    async fn get_history(username: &str) -> Result<String, ApiError> {
+    let client = CliWrapper::from_username(username.into()).await?;
+    client.init_user()?;
+    let data =client.sql_get_transactions();
+    Ok(data)
+}
+
 #[get("/<username>/note/to/<to>/asset/<asset>", rank = 2)]
 async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiError> {
     let sender = CliWrapper::from_username(username.into()).await?;
@@ -62,8 +70,7 @@ fn receive_note(username: &str, note_id: &str) {}
 
 #[launch]
 fn run() -> _ {
-    rocket::build().mount("/", routes![ping]).mount(
-        "/account",
-        routes![new, send_note, faucet_fund, get_balance],
+    rocket::build().mount("/", routes![ping])
+        .mount( "/account", routes![new, send_note, faucet_fund, get_balance, get_history],
     )
 }
