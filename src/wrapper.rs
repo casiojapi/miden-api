@@ -97,8 +97,8 @@ impl CliWrapper {
             if let Some(next) = user_id_dir_data.next_entry().await? {
                 user_id_dir.push(next);
             } else {
+                break;
             }
-            break;
         }
         let user_id_dir = user_id_dir.pop().ok_or(WrapperError::PathNotFound)?;
 
