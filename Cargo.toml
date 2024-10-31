@@ -10,6 +10,7 @@ rocket = { version = "0.5.1", features = ["json"] }
 log = "0.4"
 regex = "1.11.1"
 sqlite = "*"
+chrono ={version ="*", features =["clock"]}
 
 [features]
 default = ["debug"]

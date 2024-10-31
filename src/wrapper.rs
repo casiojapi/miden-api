@@ -6,15 +6,19 @@
 //
 //Las filas de las db de las transacciones las trae como Vec<TxInfo>. Hay que decidir como
 //serializarlas
+//TODO: El create_notes tiene que hacer un sync atras. Una vez que se hizo eso se guarda la tx
 
 use regex::Regex;
 use rocket::tokio;
 use rocket::tokio::time::sleep;
 use sqlite;
 use sqlite::Connection;
-
 use crate::errors::{CmdError, WrapperError};
+use chrono::Utc;
+
+//use crate::errors::CliError;
 use crate::txinfo::TxInfo;
+use crate::txinfo;
 
 #[cfg(feature = "debug")]
 use crate::stdpr;
@@ -150,39 +154,14 @@ impl CliWrapper {
         format!("{}/store.sqlite3", self.get_user_path())
     }
 
-    fn sql_create_connection(&self) -> Connection {
-        let path_db = self.get_user_db_path();
-        let path_db = Path::new(&path_db);
-        let connection = sqlite::open(path_db).unwrap();
-        return connection;
-    }
-
     fn sql_init_table(&self) -> () {
-        let query_create = r#"CREATE TABLE "tx_extension_table" (
-            "tx_id" TEXT,
-            "acc_sender" TEXT,
-            "acc_recipient" TEXT,
-            "acc_recipient_user_id" TEXT,
-            "faucet" TEXT,
-            "value" TEXT,
-            PRIMARY KEY("tx_id")
-            );"#;
-        let _ = self.sql_create_connection().execute(query_create);
-        println!(
-            "New tx_extension_table created in {}",
-            self.get_user_db_path()
-        )
+        txinfo::init_tx_table(self.get_user_db_path());
+        println!("New tx_extension_table created in {}",self.get_user_db_path())
     }
 
     fn sql_get_transactions(&self) -> String {
-        let mut data = Vec::new();
-        let conection = self.sql_create_connection();
-        let query = "SELECT * FROM tx_extension_table";
-        let _ = conection.iterate(query, |row| {
-            data.push(TxInfo::from_row(&row).to_json());
-            true
-        });
-        return format!("[{}]", data.join(","));
+        let json = txinfo::get_tx_data(self.get_user_db_path());
+        return json
     }
 
     fn get_user_config_path(&self) -> String {
@@ -248,6 +227,10 @@ impl CliWrapper {
 
     fn _miden_notes(&self) -> CmdResult {
         self._miden_cmd(["notes"], CmdError::ListNotes)
+    }
+
+    fn _miden_show_note(&self, note_id: &str) -> CmdResult {
+        self._miden_cmd(["notes", "--show", &note_id], CmdError::ListNotes)
     }
 
     fn _miden_consume_notes(&self, account: String, notes: Vec<String>) -> CmdResult {
@@ -447,6 +430,7 @@ impl CliWrapper {
             .map(|x| x.replace(" ", "").replace("-", "").trim().to_string())
             .ok_or(WrapperError::ParseError)?;
         self.sync()?;
+
         let tx: TxInfo = TxInfo::from_values(
             note_id.clone(),
             self.get_default_account().unwrap(),
@@ -454,7 +438,9 @@ impl CliWrapper {
             target,
             FAUCET.to_string(),
             amount,
-        );
+            Utc::now().timestamp().to_string(),
+            "output".to_string()
+            );
         tx.to_database(self.get_user_db_path());
         return Ok(note_id);
     }
@@ -475,8 +461,21 @@ impl CliWrapper {
         Ok(())
     }
 
-    pub fn consume_notes(&self, account: String, notes: Vec<String>) -> WResult<()> {
-        self._miden_consume_notes(account, notes)?;
+    pub fn consume_notes(&self, account: String, note_id: &str ) -> WResult<()> {
+        self._miden_consume_notes(account.clone(), vec![note_id.to_string()])?;
+        let (sender, amount) = self.get_note_info(note_id)?;
+        println!("{:?}",(&sender, &amount));
+        let tx = TxInfo::from_values(
+            note_id.to_owned(),
+            sender,
+            account.clone(),
+            account.clone(),
+            FAUCET.to_owned(),
+            amount,
+            Utc::now().timestamp().to_string(),
+            "input".to_string()
+            );
+        let _ = tx.to_database(self.get_user_db_path());
         Ok(())
     }
 
@@ -518,23 +517,53 @@ impl CliWrapper {
         Ok((status, height))
     }
 
-    pub async fn consume_and_sync(&self, note: &str) -> WResult<()> {
+    pub fn get_note_info(&self, note_id: &str) -> WResult<(String,String)>{
+        let output = self._miden_show_note(&note_id)?;
+        let sender_line = output.lines().filter(|line| line.contains("Sender")).last().unwrap();
+        let amount_line = output.lines().filter(|line| line.contains("Fungible Asset")).last();
+
+        //Aca se buscan por 16 hex y no por 15 forzando a 0x9 al inicio porque el funding inicial tiene como sender a 
+        //0xa....
+        let filter = r"0x[a-fA-F0-9]{16}";
+        let regex = Regex::new(filter).unwrap();
+        let sender = regex.find(sender_line).unwrap().as_str().to_owned();
+
+        let amount = amount_line.unwrap().split(FAUCET).last().unwrap().replace(" ","");
+        Ok((sender,amount))
+    }
+
+    pub async fn consume_and_sync(&self, note_id: &str) -> WResult<()> {
         // let note_paths: Vec<PathBuf> = notes.iter().map(|n| self._note_id_to_path(n)).collect();
-        let note_path: PathBuf = self._note_id_to_path(&note);
+        let note_path: PathBuf = self._note_id_to_path(&note_id);
         let status = self.sync()?;
         let account = self
             .get_default_account()
             .ok_or(WrapperError::NoDefaultAccount)?;
         self.import_note(vec![note_path])?;
-        let (note_status, height) = self.get_note(&note)?;
-        println!("Notestatus {:?} {}", note_status, height);
-        match note_status {
+        let (note_status, height) = self.get_note(&note_id)?;
+        println!("{:?}",(&note_status,&height));
+//        let (sender, amount) = self.get_note_info(note_id)?;
+//        println!("{:?}",(&sender, &amount));
+//        let tx = TxInfo::from_values(
+//            note_id.to_owned(),
+//            sender,
+//            account.clone(),
+//            account.clone(),
+//            FAUCET.to_owned(),
+//            amount,
+//            Utc::now().timestamp().to_string(),
+//            "input".to_string()
+//            );
+//        let _ = tx.to_database(self.get_user_db_path());
+
+//        println!("Notestatus {:?} {}", note_status, height);
+        match &note_status {
             NoteStatus::Consumed => Ok(()),
-            NoteStatus::Committed => self.consume_all_notes(account),
+            NoteStatus::Committed => self.consume_notes(account,note_id),
             NoteStatus::Expected => {
                 self.poll_status_until_change(&status, "block", height - status.block)
                     .await?;
-                self.consume_all_notes(account)?;
+                self.consume_notes(account,note_id)?;
                 self.poll_status_until_change(&status, "commited_transactions", 1)
                     .await?;
                 Ok(())
@@ -649,25 +678,33 @@ mod test {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(USERNAME_DB_DIR_VAR, "/tmp/usernames");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let _client_fran = CliWrapper::new("fran_id".into(), "fran".into());
-        let _ = _client_fran.init_user();
-        let _ = _client_fran.create_account();
+        let sender = CliWrapper::new("fran_id".into(), "fran".into());
+        let _ = sender.init_user();
+        let _ = sender.create_account();
+        let res = sender.get_list_accounts();
+        println!("Creo la cuenta {:?}",res);
         //
-        let (note_id, _) = _client_fran.faucet_request(100).await.unwrap();
-        _client_fran.consume_and_sync(&note_id).await.unwrap();
-        let res = _client_fran.get_list_accounts();
+        let (note_id, _) = sender.faucet_request(100).await.unwrap();
+        println!("Llego la nota con los 100");
+        let _ = sender.consume_and_sync(&note_id).await.unwrap();
+        println!("Consumio los 100");
 
-        let _client_joel = CliWrapper::new("joel_id".into(), "joel".into());
-        _client_joel.init_user();
-        let _ = _client_joel.create_account();
-        let target = _client_joel.get_default_account().unwrap();
-        _client_fran.create_note(target.clone(), "9".to_string());
+        let receiver = CliWrapper::new("joel_id".into(), "joel".into());
+        let _ = receiver.init_user();
+        let _ = receiver.create_account();
+        let target = receiver.get_default_account().unwrap();
+        println!("Creo  la cuenta {:?}",target);
 
-        _client_fran.create_note(target, "1".to_string());
+        let note_id = sender
+            .create_note_and_sync(target, "9".to_string()).await.unwrap();
+        sender.export_note_to_path(&note_id, receiver.get_user_path());
+        receiver.consume_and_sync(&note_id).await;
 
-        let balance = _client_fran.get_account_balance().unwrap();
-        let data = _client_fran.sql_get_transactions();
-        let d = format!("{:?}", data);
-        assert_eq!(d, "2 transacciones")
+        let balance = sender.get_account_balance().unwrap();
+        let data = sender.sql_get_transactions();
+        println!("{:?}",data);
+        let data = receiver.sql_get_transactions();
+        println!("{:?}",data);
+        assert_eq!(data, "2 transacciones")
     }
 }
