@@ -369,7 +369,7 @@ impl CliWrapper {
             .pop()
             .map(|x| x.to_string());
         println!(
-            "New accoun {:?} created in {}",
+            "New account {:?} created in {}",
             address.clone().unwrap(),
             self.get_user_db_path()
         );
