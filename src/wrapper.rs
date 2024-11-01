@@ -24,6 +24,7 @@ use crate::stdpr;
 
 pub(crate) const MIDEN_CLIENT_CLI_VAR: &'static str = "MIDEN_CLIENT_CLI";
 pub(crate) const USERS_DB_DIR_VAR: &'static str = "USERS_DB_DIR";
+pub const DEFAULT_DB_PATH: &str = "/tmp/users";
 //pub(crate) const USERNAME_DB_DIR_VAR: &'static str = "USERNAME_DB_DIR";
 
 pub const FAUCET: &str = "0xa0e61d8a3f8b50be";
@@ -78,6 +79,15 @@ pub struct CliWrapper {
     username: String,
 }
 
+pub fn list_users() -> String {
+    let path = env::var(USERS_DB_DIR_VAR).unwrap_or(DEFAULT_DB_PATH.into());
+    let cmd = Command::new("bash").current_dir(path).args(["-c","ls -d *"]).output().unwrap();
+    let output =  String::from_utf8_lossy(&cmd.stdout).into_owned();
+    let lines = output.lines().map(|x| x.to_string()).collect::<Vec<String>>();
+    let joined = lines.join(r#"",""#);
+    format!(r#"["{}"]"#,joined)
+}
+
 impl CliWrapper {
     pub fn new(username: String) -> Self {
         let bin = env::var(MIDEN_CLIENT_CLI_VAR).unwrap_or("miden".into());
@@ -128,8 +138,9 @@ impl CliWrapper {
 //    }
 
     fn user_db_dir() -> String {
-        env::var(USERS_DB_DIR_VAR).unwrap_or("/tmp/users".into())
+        env::var(USERS_DB_DIR_VAR).unwrap_or(DEFAULT_DB_PATH.into())
     }
+
 
 //    fn get_username_map_path(&self) -> String {
 //        format!(
@@ -664,42 +675,54 @@ mod test {
         println!("{:?}", note_info);
     }
 
+
+    #[tokio::test]
+    async fn test_list_users() {
+        let fran = CliWrapper::new("fran".into());
+        let _ = fran.init_user();
+        let joel = CliWrapper::new("joel".into());
+        let _ = joel.init_user();
+        let casio = CliWrapper::new("casio".into());
+        let _ = casio.init_user();
+        let list = list_users();
+        assert_eq!(format!("{:?}",list),r#"["casio","fran","joel"]"#)
+    }
     #[tokio::test]
     async fn test_get_accounts() {
 //        env::set_var(USERS_DB_DIR_VAR, "/tmp/users");
 //        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let sender = CliWrapper::new("fran".into());
         let _ = sender.init_user();
-//        let _ = sender.create_account();
+        let _ = sender.create_account();
         let res = sender.get_default_account();
         println!("{:?}",res);
         let balance = sender.get_account_balance().unwrap();
         println!("{:?}",balance);
-        assert_eq!(balance, "a")
+//        assert_eq!(balance, "a")
 
 //        println!("Creo la cuenta {:?}",res);
 //        //
-//        let (note_id, _) = sender.faucet_request(100).await.unwrap();
-//        println!("Llego la nota con los 100");
-//        let _ = sender.consume_and_sync(&note_id).await.unwrap();
-//        println!("Consumio los 100");
+        let (note_id, _) = sender.faucet_request(100).await.unwrap();
+        println!("Llego la nota con los 100");
+        let _ = sender.consume_and_sync(&note_id).await.unwrap();
+        println!("Consumio los 100");
 //
-//        let receiver = CliWrapper::new( "joel".into());
-//        let _ = receiver.init_user();
-//        let _ = receiver.create_account();
-//        let target = receiver.get_default_account().unwrap();
-//        println!("Creo  la cuenta {:?}",target);
+        let receiver = CliWrapper::new( "joel".into());
+        let _ = receiver.init_user();
+        let _ = receiver.create_account();
+        let target = receiver.get_default_account().unwrap();
+        println!("Creo  la cuenta {:?}",target);
 //
-//        let note_id = sender
-//            .create_note_and_sync(target, "9".to_string()).await.unwrap();
-//        sender.export_note_to_path(&note_id, receiver.get_user_path());
-//        receiver.consume_and_sync(&note_id).await;
+        let note_id = sender
+            .create_note_and_sync(target, "9".to_string()).await.unwrap();
+        sender.export_note_to_path(&note_id, receiver.get_user_path());
+        receiver.consume_and_sync(&note_id).await;
 //
-//        let balance = sender.get_account_balance().unwrap();
-//        let data = sender.sql_get_transactions();
-//        println!("{:?}",data);
-//        let data = receiver.sql_get_transactions();
-//        println!("{:?}",data);
-//        assert_eq!(data, "2 transacciones")
+        let balance = sender.get_account_balance().unwrap();
+        let data = sender.sql_get_transactions();
+        println!("{:?}",data);
+        let data = receiver.sql_get_transactions();
+        println!("{:?}",data);
+        assert_eq!(balance, "91")
     }
 }

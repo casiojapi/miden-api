@@ -11,6 +11,7 @@ mod helpers;
 mod txinfo;
 mod wrapper;
 
+// 0.0.0.0:8000/ping
 #[get("/ping")]
 fn ping() -> &'static str {
     "pong"
@@ -31,6 +32,7 @@ fn new_user(user: Json<UserCreate>) -> Result<Value, ApiError> {
     Ok(json!({"username": username, "balance": 0, "address": account}))
 }
 
+// 0.0.0.0:8000/api/acount/<username>/info
 #[get("/<username>/info", rank = 2)]
 fn get_user(username: &str) -> Result<Value, ApiError> {
     let client = CliWrapper::new(username.into());
@@ -40,6 +42,7 @@ fn get_user(username: &str) -> Result<Value, ApiError> {
 }
 
 
+// 0.0.0.0:8000/api/acount/<username>/faucet
 #[get("/<username>/faucet", rank = 2)]
 async fn faucet_fund(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -49,6 +52,7 @@ async fn faucet_fund(username: &str) -> Result<String, ApiError> {
     Ok("funded".to_string())
 }
 
+// 0.0.0.0:8000/api/acount/<username>/balance
 #[get("/<username>/balance", rank = 2)]
 async fn get_balance(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -57,6 +61,7 @@ async fn get_balance(username: &str) -> Result<String, ApiError> {
     Ok(balance)
 }
 
+// 0.0.0.0:8000/api/acount/<username>/transactions
 #[get("/<username>/transactions", rank = 2)]
 async fn get_history(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -65,6 +70,7 @@ async fn get_history(username: &str) -> Result<String, ApiError> {
     Ok(data)
 }
 
+// 0.0.0.0:8000/api/acount/<sender>/note/to/<target>/asset/<amount>
 #[get("/<username>/note/to/<to>/asset/<asset>", rank = 2)]
 async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiError> {
     let sender = CliWrapper::from_username(username.into()).await?;
@@ -78,6 +84,7 @@ async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiE
     Ok(note_id)
 }
 
+//no implementada
 #[get("/<username>/note/receive/<note_id>", rank = 2)]
 fn receive_note(username: &str, note_id: &str) {}
 
@@ -88,8 +95,16 @@ struct Usernames {
     usernames: Vec<String>
 }
 
+
+// 0.0.0.0:8000/api/acount/users
+#[get("/users", rank = 2)]
+fn get_users() -> Result<String,ApiError> {
+    Ok(wrapper::list_users())
+}
+
+// no implementada
 #[get("/usernames", rank = 2)]
-fn get_users() -> Json<Usernames> {
+fn get_usersnames() -> Json<Usernames> {
     let usernames: Vec<String> = vec![
         "mocked",
         "fulano", "mengano", "sutano"
