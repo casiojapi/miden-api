@@ -91,25 +91,14 @@ fn receive_note(username: &str, note_id: &str) {}
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
-struct Usernames {
-    usernames: Vec<String>
+struct Users {
+    users: Vec<String>
 }
-
 
 // 0.0.0.0:8000/api/acount/users
 #[get("/users", rank = 2)]
-fn get_users() -> Result<String,ApiError> {
-    Ok(wrapper::list_users())
-}
-
-// no implementada
-#[get("/usernames", rank = 2)]
-fn get_usersnames() -> Json<Usernames> {
-    let usernames: Vec<String> = vec![
-        "mocked",
-        "fulano", "mengano", "sutano"
-    ].into_iter().map(|x| x.to_string()).collect();
-    Json(Usernames { usernames })
+fn get_users() -> Result<Json<Users>,ApiError> {
+    Ok(Json( Users { users: wrapper::list_users() } ))
 }
 
 #[launch]

@@ -8,16 +8,14 @@
 //serializarlas
 //TODO: El create_notes tiene que hacer un sync atras. Una vez que se hizo eso se guarda la tx
 
+use chrono::Utc;
 use regex::Regex;
 use rocket::tokio;
 use rocket::tokio::time::sleep;
-use sqlite;
-use crate::errors::{CmdError, WrapperError};
-use chrono::Utc;
 
-//use crate::errors::CliError;
-use crate::txinfo::TxInfo;
+use crate::errors::{CmdError, WrapperError};
 use crate::txinfo;
+use crate::txinfo::TxInfo;
 
 #[cfg(feature = "debug")]
 use crate::stdpr;
@@ -25,7 +23,6 @@ use crate::stdpr;
 pub(crate) const MIDEN_CLIENT_CLI_VAR: &'static str = "MIDEN_CLIENT_CLI";
 pub(crate) const USERS_DB_DIR_VAR: &'static str = "USERS_DB_DIR";
 pub const DEFAULT_DB_PATH: &str = "/tmp/users";
-//pub(crate) const USERNAME_DB_DIR_VAR: &'static str = "USERNAME_DB_DIR";
 
 pub const FAUCET: &str = "0xa0e61d8a3f8b50be";
 
@@ -79,23 +76,26 @@ pub struct CliWrapper {
     username: String,
 }
 
-pub fn list_users() -> String {
+pub fn list_users() -> Vec<String> {
     let path = env::var(USERS_DB_DIR_VAR).unwrap_or(DEFAULT_DB_PATH.into());
-    let cmd = Command::new("bash").current_dir(path).args(["-c","ls -d *"]).output().unwrap();
-    let output =  String::from_utf8_lossy(&cmd.stdout).into_owned();
-    let lines = output.lines().map(|x| x.to_string()).collect::<Vec<String>>();
-    let joined = lines.join(r#"",""#);
-    format!(r#"["{}"]"#,joined)
+    let cmd = Command::new("bash")
+        .current_dir(path)
+        .args(["-c", "ls -d *"])
+        .output()
+        .unwrap();
+    let output = String::from_utf8_lossy(&cmd.stdout).into_owned();
+    let lines = output
+        .lines()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+    lines
 }
 
 impl CliWrapper {
     pub fn new(username: String) -> Self {
         let bin = env::var(MIDEN_CLIENT_CLI_VAR).unwrap_or("miden".into());
         println!("bin: {:?}", bin);
-        Self {
-            bin,
-            username,
-        }
+        Self { bin, username }
     }
 
     pub async fn from_username(username: String) -> WResult<Self> {
@@ -112,16 +112,13 @@ impl CliWrapper {
             }
         }
 
-        Ok(Self {
-            bin,
-            username,
-        })
+        Ok(Self { bin, username })
     }
 
     pub fn get_account_balance(&self) -> WResult<String> {
         let account_id = self.get_default_account_or_err()?;
         let output = self._miden_show_account(account_id)?;
-        println!("{:?}","casa");
+        println!("{:?}", "casa");
         let lines = output.lines().filter(|line| line.contains(FAUCET)).last();
         let binding = lines.unwrap_or("│ f ┆ f ┆ 0 │");
         let balance = binding
@@ -133,23 +130,9 @@ impl CliWrapper {
         Ok(balance.to_string())
     }
 
-//    fn username_db_dir() -> String {
-//        env::var(USERNAME_DB_DIR_VAR).unwrap_or("/tmp/usernames".into())
-//    }
-
     fn user_db_dir() -> String {
         env::var(USERS_DB_DIR_VAR).unwrap_or(DEFAULT_DB_PATH.into())
     }
-
-
-//    fn get_username_map_path(&self) -> String {
-//        format!(
-//            "{}/{}/",
-//            Self::username_db_dir(),
-//            self.username,
-////            self.user_id
-//        )
-//    }
 
     pub fn get_user_path(&self) -> String {
         format!("{}/{}", Self::user_db_dir(), self.username)
@@ -161,12 +144,15 @@ impl CliWrapper {
 
     fn sql_init_table(&self) -> () {
         txinfo::init_tx_table(self.get_user_db_path());
-        println!("New tx_extension_table created in {}",self.get_user_db_path())
+        println!(
+            "New tx_extension_table created in {}",
+            self.get_user_db_path()
+        )
     }
 
     pub fn sql_get_transactions(&self) -> String {
         let json = txinfo::get_tx_data(self.get_user_db_path());
-        return json
+        return json;
     }
 
     fn get_user_config_path(&self) -> String {
@@ -182,8 +168,6 @@ impl CliWrapper {
     }
 
     fn create_user_dir(&self) -> WResult<()> {
-//        fs::create_dir_all(self.get_username_map_path())
-//            .map_err(|_| WrapperError::CreateUserDir)?;
         fs::create_dir_all(self.get_user_path()).map_err(|_| WrapperError::CreateUserDir)
     }
 
@@ -444,8 +428,8 @@ impl CliWrapper {
             FAUCET.to_string(),
             amount,
             Utc::now().timestamp().to_string(),
-            "output".to_string()
-            );
+            "output".to_string(),
+        );
         tx.to_database(self.get_user_db_path());
         return Ok(note_id);
     }
@@ -466,10 +450,10 @@ impl CliWrapper {
         Ok(())
     }
 
-    pub fn consume_notes(&self, account: String, note_id: &str ) -> WResult<()> {
+    pub fn consume_notes(&self, account: String, note_id: &str) -> WResult<()> {
         self._miden_consume_notes(account.clone(), vec![note_id.to_string()])?;
         let (sender, amount) = self.get_note_info(note_id)?;
-        println!("{:?}",(&sender, &amount));
+        println!("{:?}", (&sender, &amount));
         let tx = TxInfo::from_values(
             note_id.to_owned(),
             sender,
@@ -478,8 +462,8 @@ impl CliWrapper {
             FAUCET.to_owned(),
             amount,
             Utc::now().timestamp().to_string(),
-            "input".to_string()
-            );
+            "input".to_string(),
+        );
         let _ = tx.to_database(self.get_user_db_path());
         Ok(())
     }
@@ -522,19 +506,31 @@ impl CliWrapper {
         Ok((status, height))
     }
 
-    pub fn get_note_info(&self, note_id: &str) -> WResult<(String,String)>{
+    pub fn get_note_info(&self, note_id: &str) -> WResult<(String, String)> {
         let output = self._miden_show_note(&note_id)?;
-        let sender_line = output.lines().filter(|line| line.contains("Sender")).last().unwrap();
-        let amount_line = output.lines().filter(|line| line.contains("Fungible Asset")).last();
+        let sender_line = output
+            .lines()
+            .filter(|line| line.contains("Sender"))
+            .last()
+            .unwrap();
+        let amount_line = output
+            .lines()
+            .filter(|line| line.contains("Fungible Asset"))
+            .last();
 
-        //Aca se buscan por 16 hex y no por 15 forzando a 0x9 al inicio porque el funding inicial tiene como sender a 
+        //Aca se buscan por 16 hex y no por 15 forzando a 0x9 al inicio porque el funding inicial tiene como sender a
         //0xa....
         let filter = r"0x[a-fA-F0-9]{16}";
         let regex = Regex::new(filter).unwrap();
         let sender = regex.find(sender_line).unwrap().as_str().to_owned();
 
-        let amount = amount_line.unwrap().split(FAUCET).last().unwrap().replace(" ","");
-        Ok((sender,amount))
+        let amount = amount_line
+            .unwrap()
+            .split(FAUCET)
+            .last()
+            .unwrap()
+            .replace(" ", "");
+        Ok((sender, amount))
     }
 
     pub async fn consume_and_sync(&self, note_id: &str) -> WResult<()> {
@@ -546,29 +542,29 @@ impl CliWrapper {
             .ok_or(WrapperError::NoDefaultAccount)?;
         self.import_note(vec![note_path])?;
         let (note_status, height) = self.get_note(&note_id)?;
-        println!("{:?}",(&note_status,&height));
-//        let (sender, amount) = self.get_note_info(note_id)?;
-//        println!("{:?}",(&sender, &amount));
-//        let tx = TxInfo::from_values(
-//            note_id.to_owned(),
-//            sender,
-//            account.clone(),
-//            account.clone(),
-//            FAUCET.to_owned(),
-//            amount,
-//            Utc::now().timestamp().to_string(),
-//            "input".to_string()
-//            );
-//        let _ = tx.to_database(self.get_user_db_path());
+        println!("{:?}", (&note_status, &height));
+        //        let (sender, amount) = self.get_note_info(note_id)?;
+        //        println!("{:?}",(&sender, &amount));
+        //        let tx = TxInfo::from_values(
+        //            note_id.to_owned(),
+        //            sender,
+        //            account.clone(),
+        //            account.clone(),
+        //            FAUCET.to_owned(),
+        //            amount,
+        //            Utc::now().timestamp().to_string(),
+        //            "input".to_string()
+        //            );
+        //        let _ = tx.to_database(self.get_user_db_path());
 
-//        println!("Notestatus {:?} {}", note_status, height);
+        //        println!("Notestatus {:?} {}", note_status, height);
         match &note_status {
             NoteStatus::Consumed => Ok(()),
-            NoteStatus::Committed => self.consume_notes(account,note_id),
+            NoteStatus::Committed => self.consume_notes(account, note_id),
             NoteStatus::Expected => {
                 self.poll_status_until_change(&status, "block", height - status.block)
                     .await?;
-                self.consume_notes(account,note_id)?;
+                self.consume_notes(account, note_id)?;
                 self.poll_status_until_change(&status, "commited_transactions", 1)
                     .await?;
                 Ok(())
@@ -598,7 +594,7 @@ mod test {
         let client_fran = CliWrapper::new("fran".into());
         assert!(client_fran.init_user().is_ok());
         assert!(Path::new(&client_fran.get_user_config_path()).exists());
-//        assert!(Path::new(&client_fran.get_username_map_path()).exists());
+        //        assert!(Path::new(&client_fran.get_username_map_path()).exists());
     }
 
     // #[test]
@@ -618,7 +614,7 @@ mod test {
     fn test() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let client_fran = CliWrapper::new( "fran".into());
+        let client_fran = CliWrapper::new("fran".into());
         client_fran.init_user();
         let client_joel = CliWrapper::new("joel".into());
         client_joel.init_user();
@@ -669,12 +665,11 @@ mod test {
     fn test_get_note() {
         env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
         env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let client_fran = CliWrapper::new( "fran".into());
+        let client_fran = CliWrapper::new("fran".into());
         let note_info = client_fran
             .get_note("0x6227b0cddce9e35b9e886e8ba3498d150934721dfffbad075cc51de48247d38b");
         println!("{:?}", note_info);
     }
-
 
     #[tokio::test]
     async fn test_list_users() {
@@ -685,44 +680,46 @@ mod test {
         let casio = CliWrapper::new("casio".into());
         let _ = casio.init_user();
         let list = list_users();
-        assert_eq!(format!("{:?}",list),r#"["casio","fran","joel"]"#)
+        assert_eq!(format!("{:?}", list), r#"["casio","fran","joel"]"#)
     }
     #[tokio::test]
     async fn test_get_accounts() {
-//        env::set_var(USERS_DB_DIR_VAR, "/tmp/users");
-//        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
+        //        env::set_var(USERS_DB_DIR_VAR, "/tmp/users");
+        //        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
         let sender = CliWrapper::new("fran".into());
         let _ = sender.init_user();
         let _ = sender.create_account();
         let res = sender.get_default_account();
-        println!("{:?}",res);
+        println!("{:?}", res);
         let balance = sender.get_account_balance().unwrap();
-        println!("{:?}",balance);
-//        assert_eq!(balance, "a")
+        println!("{:?}", balance);
+        //        assert_eq!(balance, "a")
 
-//        println!("Creo la cuenta {:?}",res);
-//        //
+        //        println!("Creo la cuenta {:?}",res);
+        //        //
         let (note_id, _) = sender.faucet_request(100).await.unwrap();
         println!("Llego la nota con los 100");
         let _ = sender.consume_and_sync(&note_id).await.unwrap();
         println!("Consumio los 100");
-//
-        let receiver = CliWrapper::new( "joel".into());
+        //
+        let receiver = CliWrapper::new("joel".into());
         let _ = receiver.init_user();
         let _ = receiver.create_account();
         let target = receiver.get_default_account().unwrap();
-        println!("Creo  la cuenta {:?}",target);
-//
+        println!("Creo  la cuenta {:?}", target);
+        //
         let note_id = sender
-            .create_note_and_sync(target, "9".to_string()).await.unwrap();
+            .create_note_and_sync(target, "9".to_string())
+            .await
+            .unwrap();
         sender.export_note_to_path(&note_id, receiver.get_user_path());
         receiver.consume_and_sync(&note_id).await;
-//
+        //
         let balance = sender.get_account_balance().unwrap();
         let data = sender.sql_get_transactions();
-        println!("{:?}",data);
+        println!("{:?}", data);
         let data = receiver.sql_get_transactions();
-        println!("{:?}",data);
+        println!("{:?}", data);
         assert_eq!(balance, "91")
     }
 }
