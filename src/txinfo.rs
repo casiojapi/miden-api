@@ -1,7 +1,10 @@
 use sqlite;
 use std::path::Path;
+use rocket::serde:: Serialize;
 
 #[derive(Debug)]
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
 pub struct TxInfo{
     note_id :String,
     acc_sender :String,
@@ -65,26 +68,6 @@ impl TxInfo {
         let _ = conection.execute(&query_insert);
     }
 
-    pub fn to_json(&self) -> String {
-        return format!(r#"{{"note_id" : "{}" ,
-            "acc_sender" : "{}" ,
-            "acc_recipient": "{}" ,
-            "acc_recipient_user_id" : "{}" ,
-            "faucet" : "{}" ,
-            "value" : "{}",
-            "timestamp" : "{}",
-            "transaction_type" : "{}"}}"#,
-            
-            &self.note_id,
-            &self.acc_sender,
-            &self.acc_recipient,
-            &self.acc_recipient_user_id,
-            &self.faucet,
-            &self.value,
-            &self.timestamp,
-            &self.transaction_type,
-            );
-    }
 }
 
 pub fn init_tx_table(user_db_path:String) {
@@ -105,14 +88,14 @@ pub fn init_tx_table(user_db_path:String) {
 }
 
 
-pub fn get_tx_data(user_db_path:String) -> String{
+pub fn get_tx_data(user_db_path:String) -> Vec<TxInfo> {
     let path = Path::new(&user_db_path);
     let conection = sqlite::open(path).unwrap();
     let mut data =Vec::new();
     let query = "SELECT * FROM tx_extension_table";
     let _ = conection.iterate(query,|row| {
-        data.push(TxInfo::from_row(&row).to_json());
+        data.push(TxInfo::from_row(&row));
         true});
-    return format!("[{}]",data.join(","))
+    return data
 
 }

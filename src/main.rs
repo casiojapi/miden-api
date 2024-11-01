@@ -61,13 +61,22 @@ async fn get_balance(username: &str) -> Result<String, ApiError> {
     Ok(balance)
 }
 
+
+
+use txinfo::TxInfo;
+#[derive(Serialize)]
+#[serde(crate = "rocket::serde")]
+struct TxTable {
+    transactions: Vec<TxInfo>
+}
+
 // 0.0.0.0:8000/api/acount/<username>/transactions
 #[get("/<username>/transactions", rank = 2)]
-async fn get_history(username: &str) -> Result<String, ApiError> {
+async fn get_history(username: &str) -> Result<Json<TxTable>, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
     client.init_user()?;
-    let data = client.sql_get_transactions();
-    Ok(data)
+    let transactions = client.sql_get_transactions();
+    Ok(Json(TxTable {transactions}))
 }
 
 // 0.0.0.0:8000/api/acount/<sender>/note/to/<target>/asset/<amount>

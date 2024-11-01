@@ -18,7 +18,6 @@ use crate::txinfo;
 use crate::txinfo::TxInfo;
 
 #[cfg(feature = "debug")]
-use crate::stdpr;
 
 pub(crate) const MIDEN_CLIENT_CLI_VAR: &'static str = "MIDEN_CLIENT_CLI";
 pub(crate) const USERS_DB_DIR_VAR: &'static str = "USERS_DB_DIR";
@@ -29,7 +28,7 @@ pub const FAUCET: &str = "0xa0e61d8a3f8b50be";
 use std::{
     env,
     ffi::OsStr,
-    fs::{self, DirEntry},
+    fs::{self},
     num::ParseIntError,
     path::{Path, PathBuf},
     process::Command,
@@ -150,9 +149,9 @@ impl CliWrapper {
         )
     }
 
-    pub fn sql_get_transactions(&self) -> String {
-        let json = txinfo::get_tx_data(self.get_user_db_path());
-        return json;
+    pub fn sql_get_transactions(&self) -> Vec<TxInfo> {
+        let transactions = txinfo::get_tx_data(self.get_user_db_path());
+        return transactions;
     }
 
     fn get_user_config_path(&self) -> String {
@@ -393,22 +392,22 @@ impl CliWrapper {
             .ok_or(WrapperError::NoDefaultAccount)
     }
 
-    pub fn get_list_accounts(&self) -> WResult<Vec<String>> {
-        let output = self._miden_list_accounts()?;
-        let filter = r"0x9[a-fA-F0-9]{15}";
-        let regex = Regex::new(filter).unwrap();
-        let account_ids: Vec<&str> = regex
-            .find_iter(&output)
-            .filter_map(|x| Some(x.as_str()))
-            .collect();
-        let account_ids: Vec<String> = account_ids.iter().map(|x| x.to_string()).collect();
-        println!(
-            "The accounts {:?} have been found in {}",
-            account_ids,
-            self.get_user_db_path()
-        );
-        Ok(account_ids)
-    }
+    //    pub fn get_list_accounts(&self) -> WResult<Vec<String>> {
+    //        let output = self._miden_list_accounts()?;
+    //        let filter = r"0x9[a-fA-F0-9]{15}";
+    //        let regex = Regex::new(filter).unwrap();
+    //        let account_ids: Vec<&str> = regex
+    //            .find_iter(&output)
+    //            .filter_map(|x| Some(x.as_str()))
+    //            .collect();
+    //        let account_ids: Vec<String> = account_ids.iter().map(|x| x.to_string()).collect();
+    //        println!(
+    //            "The accounts {:?} have been found in {}",
+    //            account_ids,
+    //            self.get_user_db_path()
+    //        );
+    //        Ok(account_ids)
+    //    }
 
     pub fn create_note(&self, target: String, amount: String) -> WResult<String> {
         let output = self._miden_create_note(target.clone(), amount.clone())?;
@@ -468,10 +467,10 @@ impl CliWrapper {
         Ok(())
     }
 
-    pub fn consume_all_notes(&self, account: String) -> WResult<()> {
-        self._miden_consume_all_notes(account)?;
-        Ok(())
-    }
+    //    pub fn consume_all_notes(&self, account: String) -> WResult<()> {
+    //        self._miden_consume_all_notes(account)?;
+    //        Ok(())
+    //    }
 
     pub fn import_note(&self, notes: Vec<PathBuf>) -> WResult<()> {
         let note_list_text: Vec<String> = notes
@@ -575,7 +574,8 @@ impl CliWrapper {
     pub async fn create_note_and_sync(&self, target: String, amount: String) -> WResult<String> {
         let status = self.sync()?;
         let note_id = self.create_note(target, amount)?;
-        self.poll_status_until_change(&status, "commited_transactions", 1)
+        let _ = self
+            .poll_status_until_change(&status, "commited_transactions", 1)
             .await;
         Ok(note_id)
     }
@@ -586,91 +586,6 @@ mod test {
     use rocket::tokio;
 
     use super::*;
-
-    //    #[test]
-    fn test_init() {
-        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let client_fran = CliWrapper::new("fran".into());
-        assert!(client_fran.init_user().is_ok());
-        assert!(Path::new(&client_fran.get_user_config_path()).exists());
-        //        assert!(Path::new(&client_fran.get_username_map_path()).exists());
-    }
-
-    // #[test]
-    async fn test_from_username() {
-        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let _client_fran = CliWrapper::new("fran".into());
-        assert!(_client_fran.init_user().is_ok());
-
-        let client_fran = CliWrapper::from_username("fran".into()).await;
-        assert!(client_fran.is_ok());
-        if let Ok(c) = client_fran {
-            assert_eq!(c.username, "fran");
-        }
-    }
-
-    fn test() {
-        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let client_fran = CliWrapper::new("fran".into());
-        client_fran.init_user();
-        let client_joel = CliWrapper::new("joel".into());
-        client_joel.init_user();
-        let target = client_joel.get_default_account();
-        let id_note = client_fran
-            .create_note(target.unwrap(), "1".to_string())
-            .unwrap();
-        assert_eq!(id_note, "asd");
-        //
-        //
-        // do stuff
-
-        client_fran.faucet_request(100);
-    }
-
-    // #[test]
-    //    fn test_create_note() {
-    //        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-    //        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-    //        let client_fran = CliWrapper::new("fran_id".into(), "fran".into());
-    //        // client_fran.init_user();
-    //        // client_fran.create_account();
-    //
-    //        let status = client_fran.sync().unwrap();
-    //        println!("initial {:?}", status);
-    //
-    //        let (note_id, _) = client_fran.faucet_request(100).unwrap();
-    //        println!("{}", note_id);
-    //
-    //        // client_fran.import_note(vec![note_path]);
-    //        // client_fran.consume_all_notes(client_fran.get_default_account().unwrap());
-    //        let o = tokio::runtime::Builder::new_multi_thread()
-    //            .enable_all()
-    //            .build()
-    //            .unwrap()
-    //            .block_on(async {
-    //                client_fran.consume_and_sync(note_id).await;
-    //
-    //                // client_fran
-    //                //     // .poll_status_until_change(status, "notes_consumed", 1)
-    //                //     .poll_status_until_change(status, "block", 10)
-    //                //     .await;
-    //            });
-    //        // println!("{}", o);
-    //    }
-
-    // #[test]
-    fn test_get_note() {
-        env::set_var(USERS_DB_DIR_VAR, "/tmp/users_test");
-        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
-        let client_fran = CliWrapper::new("fran".into());
-        let note_info = client_fran
-            .get_note("0x6227b0cddce9e35b9e886e8ba3498d150934721dfffbad075cc51de48247d38b");
-        println!("{:?}", note_info);
-    }
-
     #[tokio::test]
     async fn test_list_users() {
         let fran = CliWrapper::new("fran".into());
@@ -680,12 +595,28 @@ mod test {
         let casio = CliWrapper::new("casio".into());
         let _ = casio.init_user();
         let list = list_users();
+        println!("{}", list);
         assert_eq!(format!("{:?}", list), r#"["casio","fran","joel"]"#)
     }
     #[tokio::test]
     async fn test_get_accounts() {
         //        env::set_var(USERS_DB_DIR_VAR, "/tmp/users");
         //        env::set_var(MIDEN_CLIENT_CLI_VAR, "miden");
+        //
+        let sender = CliWrapper::new("fran".to_string());
+        let _ = sender.init_user();
+        let _ = sender.create_account();
+
+        let res = sender.get_default_account();
+        println!("The defaul account of fran is {:?}", res);
+        let balance = sender.get_account_balance().unwrap();
+        println!("The balance of fran is {:?}", balance);
+
+        println!("Fran is asking for 100");
+        assert_eq!(format!("{:?}", list), r#"["casio","fran","joel"]"#)
+    }
+    #[tokio::test]
+    async fn test_get_accounts() {
         let sender = CliWrapper::new("fran".into());
         let _ = sender.init_user();
         let _ = sender.create_account();
@@ -693,13 +624,12 @@ mod test {
         println!("{:?}", res);
         let balance = sender.get_account_balance().unwrap();
         println!("{:?}", balance);
-        //        assert_eq!(balance, "a")
-
-        //        println!("Creo la cuenta {:?}",res);
-        //        //
         let (note_id, _) = sender.faucet_request(100).await.unwrap();
-        println!("Llego la nota con los 100");
+        println!("Fran has the note for 100");
         let _ = sender.consume_and_sync(&note_id).await.unwrap();
+        println!("Note consumed for 100");
+        //
+        let receiver = CliWrapper::new("joel".into());
         println!("Consumio los 100");
         //
         let receiver = CliWrapper::new("joel".into());
@@ -712,9 +642,8 @@ mod test {
             .create_note_and_sync(target, "9".to_string())
             .await
             .unwrap();
-        sender.export_note_to_path(&note_id, receiver.get_user_path());
-        receiver.consume_and_sync(&note_id).await;
-        //
+        let _ = sender.export_note_to_path(&note_id, receiver.get_user_path());
+        let _ = receiver.consume_and_sync(&note_id).await;
         let balance = sender.get_account_balance().unwrap();
         let data = sender.sql_get_transactions();
         println!("{:?}", data);
