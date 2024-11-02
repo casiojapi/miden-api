@@ -41,7 +41,6 @@ fn get_user(username: &str) -> Result<Value, ApiError> {
     Ok(json!({"username": username, "balance": balance, "address": account}))
 }
 
-
 // 0.0.0.0:8000/api/acount/<username>/faucet
 #[get("/<username>/faucet", rank = 2)]
 async fn faucet_fund(username: &str) -> Result<String, ApiError> {
@@ -61,13 +60,11 @@ async fn get_balance(username: &str) -> Result<String, ApiError> {
     Ok(balance)
 }
 
-
-
 use txinfo::TxInfo;
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
 struct TxTable {
-    transactions: Vec<TxInfo>
+    transactions: Vec<TxInfo>,
 }
 
 // 0.0.0.0:8000/api/acount/<username>/transactions
@@ -76,7 +73,7 @@ async fn get_history(username: &str) -> Result<Json<TxTable>, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
     client.init_user()?;
     let transactions = client.sql_get_transactions();
-    Ok(Json(TxTable {transactions}))
+    Ok(Json(TxTable { transactions }))
 }
 
 // 0.0.0.0:8000/api/acount/<sender>/note/to/<target>/asset/<amount>
@@ -97,17 +94,18 @@ async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiE
 #[get("/<username>/note/receive/<note_id>", rank = 2)]
 fn receive_note(username: &str, note_id: &str) {}
 
-
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
 struct Users {
-    users: Vec<String>
+    users: Vec<String>,
 }
 
 // 0.0.0.0:8000/api/acount/users
 #[get("/users", rank = 2)]
-fn get_users() -> Result<Json<Users>,ApiError> {
-    Ok(Json( Users { users: wrapper::list_users() } ))
+fn get_users() -> Result<Json<Users>, ApiError> {
+    Ok(Json(Users {
+        users: wrapper::list_users(),
+    }))
 }
 
 #[launch]
@@ -115,8 +113,13 @@ fn run() -> _ {
     rocket::build().mount("/", routes![ping]).mount(
         "/api/account",
         routes![
-        new_user,
-        get_user,
-        send_note, faucet_fund, get_balance, get_history, get_users],
+            new_user,
+            get_user,
+            send_note,
+            faucet_fund,
+            get_balance,
+            get_history,
+            get_users
+        ],
     )
 }

@@ -9,9 +9,7 @@ macro_rules! stdpr {
     };
 }
 
-
 #[macro_export]
 macro_rules! plain_enum {
-    ( $x:expr ) => {
-    };
+    ( $x:expr ) => {};
 }

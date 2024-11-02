@@ -4,7 +4,6 @@ use std::{
     io,
 };
 
-
 use rocket::http::Status;
 
 #[derive(Debug)]
@@ -19,7 +18,7 @@ pub enum CmdError {
     ImportNotes,
     CreateNote,
     ExportNote,
-    IOError(io::Error)
+    IOError(io::Error),
 }
 
 impl From<io::Error> for CmdError {

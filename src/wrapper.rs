@@ -357,30 +357,36 @@ impl CliWrapper {
     }
 
     pub fn create_account(&self) -> WResult<String> {
-        let output = self._miden_new_wallet_mut()?;
-        let it: String = output
-            .lines()
-            .filter(|line| line.contains("To view account details execute"))
-            .collect();
-        let value = it.as_str().replace("`", "");
-        let address: Option<String> = value
-            .split(" ")
-            .collect::<Vec<&str>>()
-            .pop()
-            .map(|x| x.to_string());
-        println!(
-            "New account {:?} created in {}",
-            address.clone().unwrap(),
-            self.get_user_db_path()
-        );
-        self.sql_init_table();
-        address.ok_or(WrapperError::ParseError)
+        match self.get_default_account() {
+            Some(address) => Ok(address),
+            None => {
+                let output = self._miden_new_wallet_mut()?;
+                let it: String = output
+                    .lines()
+                    .filter(|line| line.contains("To view account details execute"))
+                    .collect();
+                let value = it.as_str().replace("`", "");
+                let address: Option<String> = value
+                    .split(" ")
+                    .collect::<Vec<&str>>()
+                    .pop()
+                    .map(|x| x.to_string());
+                println!(
+                    "New account {:?} created in {}",
+                    address.clone().unwrap(),
+                    self.get_user_db_path()
+                );
+                self.sql_init_table();
+                address.ok_or(WrapperError::ParseError)
+            }
+        }
     }
 
     pub fn get_default_account(&self) -> Option<String> {
-        let file_string = std::fs::read_to_string(self.get_user_config_path()).unwrap();
-        let parsed_toml = file_string.parse::<toml::Table>().unwrap();
-        let address = parsed_toml["default_account_id"]
+        let file_string = std::fs::read_to_string(self.get_user_config_path()).ok();
+        let parsed_toml = file_string?.parse::<toml::Table>().ok();
+        let address = parsed_toml?
+            .get("default_account_id")?
             .as_str()
             .map(|x| x.to_string());
         //        println!("The default account in {} is {}",self.get_user_db_path(),&address.clone().unwrap());
