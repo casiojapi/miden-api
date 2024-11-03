@@ -1,24 +1,24 @@
 FROM rust:1.80.0 AS app-builder
-ARG BUILD_BRANCH=main
+ARG BUILD_BRANCH=master
 
 # Clone the public repository
-RUN git clone https://github.com/fatlabsxyz/miden-cli-wraper.git && \
-    cd miden-cli-wraper && \
+RUN git clone https://github.com/casiojapi/miden-api.git && \
+    cd miden-api && \
     git checkout $BUILD_BRANCH
-RUN cd miden-cli-wraper && cargo build --release
-RUN cd miden-cli-wraper && cargo build
+RUN cd miden-api && cargo build --release
+RUN cd miden-api && cargo build
 
 FROM rust:1.80.0 AS cli-builder
-RUN git clone https://github.com/fatlabsxyz/miden-cli-wraper.git && \
-    cd miden-cli-wraper && \
+RUN git clone https://github.com/casiojapi/miden-api.git && \
+    cd miden-api && \
     cargo build --release
 RUN cargo install --root /miden-cli miden-cli --features concurrent,testing
 
 FROM debian:bookworm-slim AS runner
 RUN apt update && apt install -y libsqlite3-0
 WORKDIR /app
-COPY --from=app-builder /miden-cli-wraper/target/release/wraper-cli /app/
-COPY --from=app-builder /miden-cli-wraper/target/debug/wraper-cli /app/wraper-cli-debug
+COPY --from=app-builder /miden-api/target/release/wraper-cli /app/
+COPY --from=app-builder /miden-api/target/debug/wraper-cli /app/wraper-cli-debug
 COPY --from=cli-builder /miden-cli/bin/miden /app/
 COPY Rocket.toml /app/
 
