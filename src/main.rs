@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate rocket;
 
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use errors::ApiError;
 use rocket::serde::json::{json, Json, Value};
 use rocket::serde::{Deserialize, Serialize};
@@ -11,7 +12,6 @@ mod helpers;
 mod txinfo;
 mod wrapper;
 
-// 0.0.0.0:8000/ping
 #[get("/ping")]
 fn ping() -> &'static str {
     "pong"
@@ -32,7 +32,6 @@ fn new_user(user: Json<UserCreate>) -> Result<Value, ApiError> {
     Ok(json!({"username": username, "balance": 0, "address": account}))
 }
 
-// 0.0.0.0:8000/api/acount/<username>/info
 #[get("/<username>/info", rank = 2)]
 fn get_user(username: &str) -> Result<Value, ApiError> {
     let client = CliWrapper::new(username.into());
@@ -41,7 +40,6 @@ fn get_user(username: &str) -> Result<Value, ApiError> {
     Ok(json!({"username": username, "balance": balance, "address": account}))
 }
 
-// 0.0.0.0:8000/api/acount/<username>/faucet
 #[get("/<username>/faucet", rank = 2)]
 async fn faucet_fund(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -51,7 +49,6 @@ async fn faucet_fund(username: &str) -> Result<String, ApiError> {
     Ok("funded".to_string())
 }
 
-// 0.0.0.0:8000/api/acount/<username>/balance
 #[get("/<username>/balance", rank = 2)]
 async fn get_balance(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -67,7 +64,6 @@ struct TxTable {
     transactions: Vec<TxInfo>,
 }
 
-// 0.0.0.0:8000/api/acount/<username>/transactions
 #[get("/<username>/transactions", rank = 2)]
 async fn get_history(username: &str) -> Result<Json<TxTable>, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
@@ -76,23 +72,21 @@ async fn get_history(username: &str) -> Result<Json<TxTable>, ApiError> {
     Ok(Json(TxTable { transactions }))
 }
 
-// 0.0.0.0:8000/api/acount/<sender>/note/to/<target>/asset/<amount>
 #[get("/<username>/note/to/<to>/asset/<asset>", rank = 2)]
 async fn send_note(username: &str, to: &str, asset: &str) -> Result<String, ApiError> {
     let sender = CliWrapper::from_username(username.into()).await?;
     let receiver = CliWrapper::from_username(to.into()).await?;
     let receiver_acc = receiver.get_default_account_or_err()?;
-    let note_id = sender
-        .create_note_and_sync(receiver_acc, asset.into())
-        .await?;
+    let note_id = sender.create_note_and_sync(receiver_acc, asset.into()).await?;
     sender.export_note_to_path(&note_id, receiver.get_user_path())?;
     receiver.consume_and_sync(&note_id).await?;
     Ok(note_id)
 }
 
-//no implementada
-#[get("/<username>/note/receive/<note_id>", rank = 2)]
-fn receive_note(username: &str, note_id: &str) {}
+#[get("/users", rank = 2)]
+fn get_users() -> Result<Json<Users>, ApiError> {
+    Ok(Json(Users { users: wrapper::list_users() }))
+}
 
 #[derive(Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -100,26 +94,29 @@ struct Users {
     users: Vec<String>,
 }
 
-// 0.0.0.0:8000/api/acount/users
-#[get("/users", rank = 2)]
-fn get_users() -> Result<Json<Users>, ApiError> {
-    Ok(Json(Users {
-        users: wrapper::list_users(),
-    }))
-}
-
 #[launch]
 fn run() -> _ {
-    rocket::build().mount("/", routes![ping]).mount(
-        "/api/account",
-        routes![
-            new_user,
-            get_user,
-            send_note,
-            faucet_fund,
-            get_balance,
-            get_history,
-            get_users
-        ],
-    )
+    let cors = CorsOptions::default()
+        .allowed_origins(AllowedOrigins::all())
+        .allowed_methods(vec![rocket::http::Method::Get, rocket::http::Method::Post, rocket::http::Method::Options]
+            .into_iter()
+            .map(From::from)
+            .collect())
+        .allow_credentials(true);
+
+    rocket::build()
+        .mount("/", routes![ping])
+        .mount(
+            "/api/account",
+            routes![
+                new_user,
+                get_user,
+                send_note,
+                faucet_fund,
+                get_balance,
+                get_history,
+                get_users
+            ],
+        )
+        .attach(cors.to_cors().unwrap())
 }

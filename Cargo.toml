@@ -11,6 +11,7 @@ log = "0.4"
 regex = "1.11.1"
 sqlite = "*"
 chrono ={version ="*", features =["clock"]}
+rocket_cors = "0.6.0"
 
 [features]
 default = ["debug"]
