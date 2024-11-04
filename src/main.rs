@@ -47,10 +47,10 @@ async fn faucet_fund(username: &str) -> Result<String, ApiError> {
     let client = CliWrapper::from_username(username.into()).await?;
     println!("client");
     // let client = CliWrapper::new(username.into());
-  //  client.init_user()?;
+    client.init_user()?;
     let (note_id, _) = client.faucet_request(100).await?;
 
-    println!("faucet request: {}", note_id);
+    println!("mainrs faucet request: {}", note_id);
     client.consume_and_sync(&note_id).await?;
     println!("consume and sync");
     Ok("funded".to_string())

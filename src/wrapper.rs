@@ -344,6 +344,7 @@ impl CliWrapper {
                 break;
             }
             if counter > 1000 {
+                println!("counter > 1000");
                 return Err(WrapperError::PollTimeoutError);
             }
             counter += 1;
