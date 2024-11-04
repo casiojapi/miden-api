@@ -276,12 +276,13 @@ impl CliWrapper {
         let account_id = self
             .get_default_account()
             .ok_or(WrapperError::NoDefaultAccount)?;
-
+        println!("faucet request account_id: {}", account_id);
         let body = format!(
             "{{ \"account_id\": \"{}\", \"is_private_note\": true, \"asset_amount\": {} }}",
             account_id, amount
         );
 
+        println!("faucet request body: {}", body);
         let response = reqwest::Client::new()
             .post("https://testnet.miden.io/get_tokens")
             .header("Content-Type", "application/json")
@@ -289,6 +290,7 @@ impl CliWrapper {
             .send()
             .await?;
 
+        println!("faucet request response: {:?}", response);
         let note_id = response
             .headers()
             .get("note-id")
@@ -296,12 +298,16 @@ impl CliWrapper {
             .to_str()
             .map(|x| x.to_string())
             .map_err(|_| WrapperError::ParseError)?;
+        println!("faucet request note_id: {:?}", note_id);
 
         let note = response.bytes().await?;
+
+        println!("faucet request note: {:?}", note);
 
         let note_path: PathBuf = format!("{}/{}.mno", self.get_user_path(), note_id).into();
         tokio::fs::write(&note_path, note).await?;
 
+        println!("faucet request note_path: {}", note_path.display());
         Ok((note_id, note_path))
     }
 
