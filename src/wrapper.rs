@@ -339,7 +339,7 @@ impl CliWrapper {
                 }
                 _ => panic!("please dont fuck up"),
             };
-            if delta >= change_size || counter > 200 {
+            if delta >= change_size || counter > 1002 {
                 println!("exiting... {:?}", status);
                 break;
             }
