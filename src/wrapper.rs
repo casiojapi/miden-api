@@ -343,7 +343,7 @@ impl CliWrapper {
                 println!("exiting... {:?}", status);
                 break;
             }
-            if counter > 200 {
+            if counter > 1000 {
                 return Err(WrapperError::PollTimeoutError);
             }
             counter += 1;
