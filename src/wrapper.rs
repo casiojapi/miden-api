@@ -547,12 +547,21 @@ impl CliWrapper {
 
     pub async fn consume_and_sync(&self, note_id: &str) -> WResult<()> {
         // let note_paths: Vec<PathBuf> = notes.iter().map(|n| self._note_id_to_path(n)).collect();
+        println!("inside consume and sync"); 
         let note_path: PathBuf = self._note_id_to_path(&note_id);
+        println!("inside consume and sync, note_path: {}", note_path.display()); 
         let status = self.sync()?;
+
+        println!("inside consume and sync, status: {:?}", status); 
         let account = self
             .get_default_account()
             .ok_or(WrapperError::NoDefaultAccount)?;
+
+        println!("inside consume and sync, account: {}", account); 
+
         self.import_note(vec![note_path])?;
+        println!("imported note");
+
         let (note_status, height) = self.get_note(&note_id)?;
         println!("{:?}", (&note_status, &height));
         //        let (sender, amount) = self.get_note_info(note_id)?;
@@ -571,14 +580,25 @@ impl CliWrapper {
 
         //        println!("Notestatus {:?} {}", note_status, height);
         match &note_status {
-            NoteStatus::Consumed => Ok(()),
-            NoteStatus::Committed => self.consume_notes(account, note_id),
+            NoteStatus::Consumed => {
+                println!("consumed");
+                Ok(())
+            }
+            NoteStatus::Committed => { println!("committed");
+                self.consume_notes(account, note_id)}
             NoteStatus::Expected => {
+                println!("expected - 1");
                 self.poll_status_until_change(&status, "block", height - status.block)
                     .await?;
+
+                println!("expected - 2");
                 self.consume_notes(account, note_id)?;
+
+                println!("expected - 3");
                 self.poll_status_until_change(&status, "commited_transactions", 1)
                     .await?;
+
+                println!("expected - 4");
                 Ok(())
             }
         }
